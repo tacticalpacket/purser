@@ -249,16 +249,23 @@ def cmd_dashboard(args) -> int:
 
     Reads the ledger read-only through the same `analytics.build_document` that
     `dashboard-data` prints, then hands the result to
-    `purser.dashboard.server`. Nothing is written and nothing leaves the
-    machine: the listener binds loopback only, there is no host argument, and
-    the page has no remote subresources at all. `purser.dashboard.server`'s
-    module docstring is where those rules are written down.
+    `purser.dashboard.server`. Nothing is written and the page has no remote
+    subresources at all. `purser.dashboard.server`'s module docstring is where
+    those rules are written down.
+
+    `--host` is the one way to publish the page beyond this machine, and it is
+    opt-in: the default is unchanged loopback, so anyone who does not ask for a
+    routable address still gets exactly the old behaviour. Asking for one loads
+    the password from the private config home and hands it to `build_server`,
+    which refuses to bind without it. The password is read here and passed on;
+    it is never printed, and no failure message quotes it.
 
     `--document` renders a prepared JSON document instead of building one from
     the ledger. That is how the page is developed against the synthetic fixture
     in `tests/fixtures/dashboard_sample.json`, and it is the only way to look
     at the page without opening real state.
     """
+    password = None if dashboard.is_loopback(args.host) else dashboard.load_password()
     if args.document is not None:
         path = Path(args.document)
         if not path.is_file():
@@ -276,7 +283,13 @@ def cmd_dashboard(args) -> int:
             document = analytics.build_document(con)
         finally:
             con.close()
-    return dashboard.serve(document, port=args.port)
+    try:
+        return dashboard.serve(
+            document, port=args.port, host=args.host, password=password
+        )
+    except dashboard.AuthenticationRequired as exc:
+        print(f"purser: {exc}", file=sys.stderr)
+        return 2
 
 
 def cmd_sniff(args) -> int:
@@ -365,20 +378,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "dashboard",
-        help="serve the local dashboard page on 127.0.0.1",
+        help="serve the dashboard page; 127.0.0.1 unless --host says otherwise",
         description=(
             "Builds the same document `dashboard-data` prints and serves one "
             "self-contained HTML page that renders it. The listener binds "
-            "127.0.0.1 only -- there is no host option, because this page shows "
-            "your whole financial position and has no authentication in front "
-            "of it. The page has no remote subresources: CSS, JavaScript and "
-            "every chart are inlined, so it renders with the network cable "
-            "pulled. Press Ctrl-C to stop."
+            "127.0.0.1 unless --host asks for something else, because this page "
+            "shows your whole financial position. A non-loopback --host turns on "
+            "HTTP Basic authentication and will not start without a password in "
+            "`dashboard-password` under the private config home (see `purser "
+            "paths`); Basic auth over plain HTTP is readable "
+            "on the wire, so it belongs on a network you trust. The page has no "
+            "remote subresources: CSS, JavaScript and every chart are inlined, "
+            "so it renders with the network cable pulled. Press Ctrl-C to stop."
         ),
     )
     p.add_argument("--port", type=int, default=8787,
-                   help="loopback port; 0 picks a free one. Default 8787, and "
+                   help="port; 0 picks a free one. Default 8787, and "
                         "if it is taken a free one is picked anyway")
+    p.add_argument("--host", default=dashboard.LOOPBACK,
+                   help="address to bind. Default 127.0.0.1. Any non-loopback "
+                        "address requires the configured password and refuses "
+                        "to start without one")
     p.add_argument("--document", metavar="PATH",
                    help="render a prepared JSON document instead of reading the "
                         "ledger; used to develop the page against the synthetic "

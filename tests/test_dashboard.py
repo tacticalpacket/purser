@@ -1,4 +1,4 @@
-"""Two properties of the dashboard page that a mistake would quietly break.
+"""Properties of the dashboard page that a mistake would quietly break.
 
 Neither is a style check. Each fails only if the page has actually stopped
 doing its job, and each is written against behaviour -- the page as an HTML
@@ -8,6 +8,7 @@ than against the shape of the source.
 
 from __future__ import annotations
 
+import base64
 import json
 import socket
 import threading
@@ -215,6 +216,73 @@ def test_the_one_route_answers_and_carries_its_headers(document):
         assert response.status == 404
         assert response.read() == b""
         con.close()
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
+def test_a_routable_bind_demands_a_password_and_checks_it(document, tmp_path):
+    """The three facts that decide whether publishing this page is safe.
+
+    One test, because they are one property: a routable listener exists only
+    behind a password that is actually verified.
+
+    *Refuses to start.* `build_server` raises before it binds, so a routable
+    host with no password configured leaves nothing listening at all. That is
+    asserted against a real routable-looking address rather than a mocked one,
+    and needs no interface to exist, because the refusal happens first.
+
+    *Wrong password is 401, right password is 200.* Those are asserted over a
+    loopback bind carrying a password, which runs the identical handler path a
+    routable bind runs -- `_authorized` is reached for every request and does
+    not know or care which address the socket sits on. Binding a real LAN
+    address here would test the operating system's routing table instead, and
+    would not run anywhere but on one machine.
+    """
+    # Refuses to start: routable address, no password file anywhere.
+    assert dashboard_server.load_password() is None
+    with pytest.raises(dashboard_server.AuthenticationRequired):
+        dashboard_server.build_server(document, port=0, host="192.0.2.10")
+
+    # ...and it is the missing password, not the address, that stops it.
+    password = "correct-horse-battery-staple"
+    httpd = dashboard_server.build_server(
+        document, port=0, host=dashboard_server.LOOPBACK, password=password
+    )
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = httpd.server_address[0], httpd.server_address[1]
+
+        def get(credentials: str | None) -> tuple[int, str | None, bytes]:
+            headers = {}
+            if credentials is not None:
+                token = base64.b64encode(credentials.encode()).decode()
+                headers["Authorization"] = f"Basic {token}"
+            con = HTTPConnection(host, port, timeout=5)
+            con.request("GET", "/", headers=headers)
+            response = con.getresponse()
+            body = response.read()
+            result = (response.status, response.getheader("WWW-Authenticate"), body)
+            con.close()
+            return result
+
+        status, challenge, body = get(None)
+        assert status == 401
+        assert challenge == 'Basic realm="purser"'
+        assert body == b""
+
+        status, challenge, body = get(f"{dashboard_server.USERNAME}:wrong")
+        assert status == 401
+        assert challenge == 'Basic realm="purser"'
+        assert body == b""
+
+        status, _, body = get(f"{dashboard_server.USERNAME}:{password}")
+        assert status == 200
+        assert b"purser" in body
+        # The credential must not have leaked into the page it unlocked.
+        assert password.encode() not in body
     finally:
         httpd.shutdown()
         httpd.server_close()
