@@ -305,13 +305,33 @@ def load_accounts(con: duckdb.DuckDBPyConnection) -> list[dict]:
             "available_balance": None,
         })
 
+    # `balances.source_kind` was added to the schema after some ledgers were
+    # created, and `CREATE TABLE IF NOT EXISTS` does not alter an existing
+    # table -- so a ledger built before that commit still has no such column
+    # and this query would fail to bind against it. A reporting run must not be
+    # the thing that demands a migration of the ledger it is reporting on, and
+    # it cannot perform one anyway: the connection is read-only.
+    #
+    # So the column is selected only where it exists, and reported as NULL
+    # where it does not. NULL is the honest answer -- "this ledger does not
+    # record the kind" -- rather than defaulting to 'file' and asserting
+    # something about rows nobody wrote a kind for. Nothing in the contract
+    # depends on it; it rides along on latest_balance as an extra.
+    columns = {
+        row[0] for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'balances'"
+        ).fetchall()
+    }
+    source_kind = "b.source_kind" if "source_kind" in columns else "NULL"
+
     # CAST via AT TIME ZONE 'UTC' explicitly: a bare cast resolves in the
     # session zone, which would move the as_of day west of UTC.
     balances = con.execute(
-        """
+        f"""
         SELECT a.alias, b.balance_type,
                CAST(b.as_of AT TIME ZONE 'UTC' AS DATE) AS as_of_day,
-               b.amount, b.source_kind
+               b.amount, {source_kind} AS source_kind
         FROM balances b JOIN accounts a USING (account_id)
         ORDER BY a.alias, b.as_of
         """
