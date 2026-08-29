@@ -11,6 +11,17 @@ import duckdb
 SCHEMA_RESOURCE = "schema.sql"
 
 
+class UnknownAccount(KeyError):
+    """An alias that the registry does not declare.
+
+    A KeyError, because that is what it has always been and callers catch it as
+    one; named so the CLI can turn it into advice rather than a traceback.
+    """
+
+    def __str__(self) -> str:  # KeyError's repr quotes its argument
+        return str(self.args[0])
+
+
 def schema_sql() -> str:
     """Return the packaged schema DDL."""
     return resources.files("purser.db").joinpath(SCHEMA_RESOURCE).read_text(encoding="utf-8")
@@ -28,6 +39,12 @@ def connect(db_path: str | Path | None = None) -> duckdb.DuckDBPyConnection:
     ``None`` opens an in-memory database, which is what the tests use.
     """
     con = duckdb.connect(":memory:" if db_path is None else str(db_path))
+    # DuckDB otherwise takes its session timezone from the host, which decides
+    # how a DATE compares against a TIMESTAMPTZ. `balances.as_of` is a
+    # TIMESTAMPTZ and `transactions.posted_date` is a DATE, and the monthly
+    # check compares them, so an unpinned timezone would make a reconciliation
+    # depend on where the laptop thinks it is -- off by a day, west of UTC.
+    con.execute("SET TimeZone='UTC'")
     apply_schema(con)
     return con
 
@@ -73,8 +90,8 @@ def account_id(con: duckdb.DuckDBPyConnection, alias: str) -> int:
     """Resolve an alias to its account_id, or fail loudly."""
     row = con.execute("SELECT account_id FROM accounts WHERE alias = ?", [alias]).fetchone()
     if row is None:
-        raise KeyError(
-            f"account alias {alias!r} is not in the registry; "
-            f"declare it in config/accounts.yaml"
+        raise UnknownAccount(
+            f"account alias {alias!r} is not in the registry; declare it in the "
+            f"private accounts.yaml (`purser paths` says where that is)"
         )
     return int(row[0])

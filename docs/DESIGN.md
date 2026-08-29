@@ -4,7 +4,9 @@ Drop this file into the repo as `docs/DESIGN.md`. It reviews the GPT spec, scope
 
 ## Verdict on the GPT spec
 
-The instincts are right and about 40% of it belongs in v1. The canonical data model, immutable raw layer, idempotent imports, FITID-plus-fingerprint dedupe, deterministic rules before AI, transfer matching, auditability chain, and "AI never does arithmetic" are all correct and worth keeping verbatim. That part reads like someone who has been burned by aggregator apps.
+The instincts are right and about 40% of it belongs in v1. The canonical data model, immutable raw layer, idempotent imports, fingerprint dedupe, deterministic rules before AI, transfer matching, auditability chain, and "AI never does arithmetic" are all correct and worth keeping verbatim. That part reads like someone who has been burned by aggregator apps.
+
+Two of them mean something narrower than the spec assumed, and both narrowings only became visible once the real exports were parsed. The FITID half of "FITID-plus-fingerprint" does not survive contact with NFCU's CSV, and the immutable raw layer is a file set rather than a table. They are corrected below, under "Transaction identity" and "The immutable layer is the file set". Neither changes the instinct; both change what the code has to do.
 
 The rest is the over-architecting you said you hate, written in PRD voice. Taken literally it describes roughly six subsystems (reconciliation engine, net-worth engine, scenario modeler, recommendation engine with difficulty/confidence scoring, investment analytics, financial timeline, ops-console dashboard, web API). That is a year of evenings and it front-loads the parts you need least. Specific cuts:
 
@@ -156,7 +158,79 @@ $PURSER_HOME/raw/                # or ${XDG_DATA_HOME:-$HOME/.local/share}/purse
 
 Filename convention: `<download-date>_<range-or-kind>.csv`. The download date prefix means overlapping re-exports sort cleanly and dedupe handles the overlap. PDFs, if you ever pull older statements, go in `<data home>/raw/<alias>/statements/` for archive and reconciliation only.
 
+**Export convention: overlap by whole days.** When you pull the next export,
+set its range to start several *full* days before the previous export's end --
+not at that end, and never part-way through a day. Overlap at all is needed
+because banks back-post: a transaction can appear in a window you already
+downloaded. Overlap by *whole days* is needed because of how identity works
+(see "Transaction identity", below). Rows that are byte-identical are told
+apart by their position within their posting day, and that position is only
+stable when every export covering a day covers the whole of it.
+
+The one case the scheme cannot survive is a boundary that falls *inside* a day
+that holds identical transactions: the early file catches the first two of
+three, the late file starts at the third, and the third reads as the first --
+a duplicate -- and is dropped. That edge is pinned by a test
+(`tests/test_overlapping_exports.py`) so it stays a known limitation rather
+than a surprise. Following the convention is what keeps you away from it:
+start a few days back and every boundary lands on a day both files hold in
+full.
+
 Account aliases are declared once in the private `accounts.yaml` (template: `config/accounts.example.yaml`); directory name must match the alias exactly. That registry is the join point for everything downstream.
+
+### The immutable layer is the file set
+
+"Immutable raw layer" reads, in the spec, like a database table nothing
+updates. It is not a table. The immutable layer is the **file set under
+`<data home>/raw/`** -- the exports exactly as the institution wrote them,
+never edited and never renamed after landing. `<data home>/purser.duckdb` is a
+derived artifact: delete it, re-run `purser ingest`, and it comes back, because
+every row in it was parsed from those files under configuration that is also on
+disk.
+
+The consequence is the part that matters. Anything a **human** decided is not
+in the raw files and cannot be re-derived from them -- a manual categorisation,
+a merchant alias, a stated balance, a transfer matched by hand. Each of those
+must either live in configuration (tracked generic, or the private overlay) or
+be re-enterable in one command from something the captain still holds. Never
+only in the database. The test is blunt: **if deleting `purser.duckdb` would
+lose it, it is in the wrong place.** A stated balance passes that test the
+second way -- it is a real dollar figure, so it must not go into committed
+configuration, but it is one command to type again off a statement the captain
+already has.
+
+The private home is what porter backs up; the repository is not, and the
+database is a cache.
+
+## Transaction identity
+
+The spec asked for FITID-plus-fingerprint: prefer the institution's own
+transaction id, fall back to a content hash. Half of that does not survive
+contact with the data. NFCU's CSV export has a `Reference` column -- exactly
+where a FITID would live -- and it is **empty on every row of both accounts**.
+There is no institution-assigned id in a CSV source, so there is nothing to
+prefer, and the fallback is the whole scheme.
+
+So: **a CSV source's identity is the content fingerprint**, a deterministic
+hash over the fields that make a transaction what it is, plus an **occurrence
+index** that separates the rows the hash cannot. The index is not a tie-breaker
+for bad data; byte-identical rows are usually *correct*. Three identical
+coffees on one day are three real transactions, and a content hash alone
+collapses them to one, silently losing two. The occurrence index -- this is the
+first, second, third such row on that day -- is what keeps them three.
+`src/purser/core/fingerprint.py` is the implementation, and its normalization
+is frozen under `FINGERPRINT_VERSION`.
+
+The rule that follows is the one to be careful with: **one identity scheme per
+account, ever.** The dedupe key is *stored* on every row rather than recomputed
+at read time, because that is the only way a uniqueness constraint can enforce
+it. So changing the scheme -- adding a field to the fingerprint, changing the
+normalization, or switching an account onto a FITID because some future adapter
+supplies one -- invalidates every dedupe key already stored for that account.
+Nothing errors. The next import simply matches none of the existing rows and
+re-inserts the account's entire history alongside itself. An account that
+starts on fingerprints stays on fingerprints; a scheme change means a rebuild
+of that account from `raw/`, never a quiet switch on a live ledger.
 
 ## Division of labor across models
 
@@ -165,11 +239,48 @@ Account aliases are declared once in the private `accounts.yaml` (template: `con
 - GPT Codex as checker: review PRs/diffs for correctness of the accounting logic, especially dedupe, transfer matching, and sign conventions. Give it the fixtures and expected outputs, not your real data.
 - Real financial data goes to local tooling only unless you decide otherwise per session. LLM categorization passes should send unique merchant strings, not full transaction rows, when using hosted models.
 
+**How an agent touches the real files at all: programmatically, never by
+reading them.** An agent working against the captain's real corpus writes code,
+runs it, and reads back what code produces -- row counts, column names, the
+header shape, parse failures, min and max dates, checksum totals, a net.
+Aggregates and shapes are enough to build an adapter and to prove it right.
+Transaction rows are not needed for any of it, and pulling them into a hosted
+model's context is the disclosure everything else in this document exists to
+prevent. `purser sniff <file>` exists so that "what does this file look like"
+has an answer that is not "open it".
+
+The trap is worth naming, because the reflex that springs it is the safe one
+everywhere else: **the `.ofx` exports are a single line.** There are no line
+breaks in them at all. `head`, `sed -n '1,5p'`, `less`, a quick `grep` without
+`-o` -- every habit that normally shows a harmless first glimpse of a file
+dumps hundreds of real transactions in one go. One keystroke, the whole
+account. Same for a `cat` of a CSV, just more honestly signposted.
+
 ## First session with Claude Code
 
 1. `git init purser`, lay down the structure above, commit.
 2. Write `schema.sql` (accounts, transactions, transfers, merchants, categories, balances, import_log with provenance).
 3. Build `nfcu_csv.py` against one real checking export dropped in `<data home>/raw/nfcu-checking/`.
-4. Fingerprint + dedupe + import_log, prove idempotency by importing the same file twice.
-5. Balance check against the account's known ending balance.
+4. Fingerprint + dedupe + import_log. Prove idempotency with **two overlapping
+   exports**, not the same file twice. Re-importing one file proves only that
+   the dedupe key is stable for identical bytes, which it is trivially; it
+   exercises none of the dedupe that matters. The case that actually happens
+   every month is two *different* exports whose windows overlap by several
+   whole days -- sharing some rows, each holding rows the other does not, and
+   with a group of identical rows sitting inside the overlap. That is what the
+   occurrence index has to survive, and the overlap is where it can fail. Assert
+   the same-file case too; it is the easy half.
+5. Balance check against the account's ending balance -- and be explicit about
+   where that figure comes from, because there is no longer an export to read
+   it out of. The CSV carries no balance column at all, and NFCU dropped OFX in
+   April 2026. **The ongoing figure is one the captain enters himself**, off the
+   monthly statement or the online balance on download day, stored with
+   `source_kind='stated'`; the monthly check then compares it against the
+   balance derived from the imported ledger, and the delta is what catches a bad
+   import. The OFX `<LEDGERBAL><BALAMT>` parity check was a **one-time proof
+   that the adapter was right**, run while an OFX export still existed -- it is
+   not the ongoing mechanism and cannot be, since no new OFX will ever arrive.
+   Never reconcile against `<AVAILBAL>`: it nets pending holds the ledger has
+   not posted, so it will not agree with a sum of posted transactions, and on a
+   credit card it is not a balance at all -- it is the available *credit*.
 Then Schwab adapter, then transfers, then the M2 views.

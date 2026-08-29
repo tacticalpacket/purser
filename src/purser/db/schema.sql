@@ -287,10 +287,12 @@ CREATE TABLE IF NOT EXISTS transfers (
 -- OFX-parity check was a one-time proof that the adapter was right, not the
 -- ongoing mechanism.
 --
--- NOT YET BUILT: the CLI entry point that records a stated balance, and the
--- monthly check that compares it against derived opening + posted net. These
--- columns are the schema half, landed here while schema.sql is still
--- unmerged so that adding them later is not the project's first migration.
+-- `purser record-balance` writes one (src/purser/core/stated_balance.py) and
+-- `purser monthly-check` is what consumes it (src/purser/core/monthly_check.py),
+-- rolling each month forward from the previous stated figure plus the imported
+-- movement between them. The two halves read different tables on purpose: a
+-- check whose expectation is derived from the transactions it is checking
+-- cannot fail.
 --
 -- A stated balance is a real dollar figure, so it must NOT be moved into
 -- config/, which is committed. It satisfies DESIGN.md's "human decisions must
@@ -317,7 +319,8 @@ CREATE TABLE IF NOT EXISTS balances (
     currency     VARCHAR NOT NULL DEFAULT 'USD',
     source_file  VARCHAR,
     -- Where the figure came from, in the captain's words: "August statement
-    -- p1", "online balance at download". Required for a stated balance.
+    -- p1", "online balance at download". Optional, and worth writing anyway:
+    -- it is what makes a delta investigable a year later.
     note         VARCHAR,
     import_id    INTEGER REFERENCES import_log(import_id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),

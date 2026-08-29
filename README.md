@@ -50,12 +50,40 @@ entry in your registry exactly. Files are never edited or renamed after landing.
 purser sniff ~/.local/share/purser/raw/nfcu-checking/<file>.csv  # columns, BOM, row count
 purser ingest                                     # every declared account
 purser ingest --account nfcu-checking             # just one
-purser balance-check                              # reconcile against the known ending balance
 purser quality                                    # ledger aggregates and import history
 ```
 
 Imports are idempotent: re-running over the same file inserts nothing the
-second time, while still recording that the import ran.
+second time, while still recording that the import ran. Pull each new export
+starting a few **whole** days before the previous one ended; dedupe handles the
+overlap, and `docs/DESIGN.md` explains the one boundary it cannot.
+
+## Reconcile
+
+No export carries an authoritative balance: the CSV has no balance column, and
+NFCU dropped OFX in April 2026. So the ending figure is one you type in, off
+the statement or the banking site, and the monthly check compares it against
+what the ledger says.
+
+```sh
+purser record-balance --account nfcu-checking --as-of 2025-03-31 \
+    --amount 1855.03 --note "March statement p1"
+purser monthly-check                              # every account, every month
+```
+
+Enter the figure as the statement shows it -- on a credit card that is the
+amount **owed**, entered positive; purser stores the sign and says so.
+Re-entering the same account and date corrects the figure rather than adding a
+second one, so a typo is fixed by typing it again.
+
+`monthly-check` reports `OK`, `MISMATCH` with the delta, `anchor` for the
+earliest figure (the baseline, which nothing independent can check), or
+`not stated` for a month you have not entered one for -- which is neither a
+pass nor a failure. It exits non-zero when any month mismatches.
+
+`purser balance-check` is the older one-time proof that the CSV adapter parsed
+and signed correctly, against an OFX export's `<LEDGERBAL>`. It needs an `.ofx`
+file to exist, so it is history rather than routine.
 
 ## Tests
 

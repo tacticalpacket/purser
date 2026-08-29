@@ -1,4 +1,5 @@
-"""purser command line: ingest | balance-check | quality | sniff | paths.
+"""purser command line: ingest | record-balance | monthly-check | balance-check
+| quality | sniff | paths.
 
 Everything runs against local files. Nothing here talks to a network.
 
@@ -15,11 +16,11 @@ import sys
 from pathlib import Path
 
 from purser import __version__
-from purser.core import balance_check, paths
+from purser.core import balance_check, monthly_check, paths, stated_balance
 from purser.core.accounts import find_account, load_registry, raw_dir
 from purser.core.config import MissingRegistry
 from purser.core.importer import import_file
-from purser.db.database import connect, sync_accounts
+from purser.db.database import UnknownAccount, connect, sync_accounts
 from purser.ingest import nfcu_csv
 
 
@@ -111,6 +112,76 @@ def cmd_balance_check(args) -> int:
     return exit_code
 
 
+def cmd_record_balance(args) -> int:
+    """Record the captain's own balance figure for one account, as of one day.
+
+    This is the only number in purser that no file supplies. It is the
+    independent input `monthly-check` compares the ledger against, so it is
+    entered by hand, off a statement -- and re-entering the same account and
+    day corrects the figure rather than adding a rival one.
+    """
+    con = _open(args)
+    try:
+        recorded = stated_balance.record(
+            con,
+            account_alias=args.account,
+            as_of=args.as_of,
+            amount=args.amount,
+            note=args.note,
+        )
+    except stated_balance.StatedBalanceError as exc:
+        print(f"purser: {exc}", file=sys.stderr)
+        return 2
+
+    shown = f"{recorded.as_entered}"
+    if recorded.balance_sign == "liability":
+        # Say the flip out loud. A statement shows what is owed as a positive
+        # number; the ledger stores it negative. An unexplained minus sign in
+        # the next report is how a captain stops trusting the tool.
+        shown += f" owed (stored as {recorded.amount})"
+    verb = "corrected" if recorded.corrected else "recorded"
+    print(f"{args.account}: stated ledger balance as of {recorded.as_of} {verb}: {shown}")
+    if recorded.corrected:
+        was = stated_balance.as_entered(recorded.previous_amount, recorded.balance_sign)
+        print(f"  was {was}")
+    if recorded.note:
+        print(f"  note: {recorded.note}")
+    return 0
+
+
+def cmd_monthly_check(args) -> int:
+    """Derived-versus-stated, per account per month. The ongoing reconciliation."""
+    con = _open(args)
+    if args.account:
+        results = monthly_check.check_account(con, account_alias=args.account)
+    else:
+        results = monthly_check.check_all(con)
+
+    exit_code = 0
+    for row in results:
+        label = f"{row.account_alias} {row.month}"
+        if row.status == monthly_check.NOT_STATED:
+            # Neither a pass nor a failure. An unchecked month must look
+            # unchecked, or a silent gap reads as a clean run.
+            print(f"{label}  not stated")
+            continue
+        if row.status == monthly_check.ANCHOR:
+            print(f"{label}  anchor    stated {row.shown(row.stated)} "
+                  f"(baseline; nothing earlier to check it against)")
+            continue
+        verdict = "OK      " if row.reconciles else "MISMATCH"
+        print(
+            f"{label}  {verdict}  stated {row.shown(row.stated)}  "
+            f"derived {row.shown(row.derived)}  delta {row.shown(row.delta)}  "
+            f"(from {row.anchor_as_of} + movement {row.shown(row.net_movement)})"
+        )
+        if not row.reconciles:
+            exit_code = 1
+    if not results:
+        print("nothing to check: no transactions imported and no stated balances")
+    return exit_code
+
+
 def cmd_quality(args) -> int:
     """Structural report on the ledger. Prints aggregates, never rows."""
     con = _open(args)
@@ -172,6 +243,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--account")
     p.set_defaults(func=cmd_balance_check)
 
+    p = sub.add_parser(
+        "record-balance",
+        help="record the balance you read off a statement, for one account and day",
+    )
+    p.add_argument("--account", required=True, help="alias, as declared in the registry")
+    p.add_argument("--as-of", required=True, metavar="YYYY-MM-DD",
+                   help="the day the balance is as of, inclusive of that whole day")
+    p.add_argument("--amount", required=True,
+                   help="the figure as the statement shows it; on a credit card "
+                        "that is the amount OWED, entered positive")
+    p.add_argument("--note", help="where it came from, e.g. 'August statement p1'")
+    p.set_defaults(func=cmd_record_balance)
+
+    p = sub.add_parser(
+        "monthly-check",
+        help="compare the derived balance against the stated one, month by month",
+    )
+    p.add_argument("--account", help="alias; default is every declared account")
+    p.set_defaults(func=cmd_monthly_check)
+
     p = sub.add_parser("quality", help="ledger aggregates and import history")
     p.set_defaults(func=cmd_quality)
 
@@ -188,9 +279,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (MissingRegistry, paths.InsecureDataHome) as exc:
-        # Both mean "the private home is not set up the way it has to be". A
-        # traceback buries the one sentence that says how to fix it.
+    except (MissingRegistry, UnknownAccount, paths.InsecureDataHome) as exc:
+        # All three mean "the private home is not set up the way it has to
+        # be". A traceback buries the one sentence that says how to fix it.
         print(f"purser: {exc}", file=sys.stderr)
         return 2
 

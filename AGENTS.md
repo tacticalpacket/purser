@@ -166,12 +166,31 @@ Documented in full in `src/purser/ingest/nfcu_csv.py`; the short version:
 - Dates are `MM/DD/YYYY`. Parse explicitly; a locale guess silently corrupts the first
   twelve days of each month.
 - NFCU's CSV carries **no balance**, and NFCU dropped OFX in April 2026. So the ongoing
-  ending-balance figure has to be one the captain enters himself; the OFX
-  `<LEDGERBAL><BALAMT>` parity check in `src/purser/core/balance_check.py` was a one-time
-  proof that the adapter was right, not the ongoing mechanism. The `balances` table already
-  carries `source_kind='stated'` and `note` for that figure; **the CLI path that records one
-  is not built yet.** Never reconcile against `<AVAILBAL>`: it nets pending holds, and on a
-  credit card it reports available *credit*.
+  ending-balance figure is one the captain enters himself: `purser record-balance`
+  (`src/purser/core/stated_balance.py`) writes it as `source_kind='stated'`, and
+  `purser monthly-check` (`src/purser/core/monthly_check.py`) is the ongoing
+  reconciliation. The OFX `<LEDGERBAL><BALAMT>` parity check in
+  `src/purser/core/balance_check.py` was a one-time proof that the adapter was right; it
+  needs an `.ofx` that will never arrive again. Never reconcile against `<AVAILBAL>`: it
+  nets pending holds, and on a credit card it reports available *credit*.
+
+## Reconciliation
+
+- **The monthly check must never derive its expectation from the ledger it is checking.**
+  The stated figure is the independent input and comes from `balances`
+  (`source_kind='stated'`); the derived figure comes from `transactions`. The two are read
+  by separate functions that touch separate tables, and the module headers say why. A
+  check that computes both sides from the same rows cannot fail, so it proves nothing and
+  nothing will report that it has stopped working.
+- Balance signs are normalized **once, at entry**, exactly as the CSV adapter normalizes
+  transaction direction: a credit-card figure is typed as the statement shows it (amount
+  owed, positive) and stored negative. That is what lets a card reconcile with the same
+  arithmetic as a checking account, with no per-type branch downstream.
+- `as_of` is inclusive of its whole day, and `database.connect` pins the DuckDB session
+  timezone to UTC so a `DATE` vs `TIMESTAMPTZ` comparison cannot shift by a day on a
+  machine west of UTC.
+- A month with no stated figure is reported `not stated`, and the earliest stated figure is
+  reported `anchor`. Neither is a pass; an unchecked month has to look unchecked.
 
 ## Categorization
 
