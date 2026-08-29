@@ -1,5 +1,7 @@
 # purser
 
+[![ci](https://github.com/tacticalpacket/purser/actions/workflows/ci.yml/badge.svg)](https://github.com/tacticalpacket/purser/actions/workflows/ci.yml)
+
 The ship's officer responsible for the money. A local-only personal finance
 ledger: ingest statements, dedupe them, reconcile them, and report on them.
 
