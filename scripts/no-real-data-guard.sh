@@ -11,13 +11,18 @@
 # by hand at any time: scripts/no-real-data-guard.sh
 #
 # What it checks, and why:
-#   1. Anything under data/ or reports/ — both are gitignored entirely per docs/DESIGN.md
-#      (data/ is the captain's real bank/brokerage exports and the local duckdb file;
-#      reports/ is generated output). This catches a `git add -f` or an absolute-path
-#      stage that bypassed .gitignore.
+#   1. Anything under data/ or reports/. These are no longer repository directories at
+#      all — real state lives outside every worktree in the private data home, per
+#      docs/DESIGN.md's "Public code, private data" — so nothing purser writes can put a
+#      file there. The check stays because a human still can, by hand or by habit.
+#   1b. config/accounts.yaml. The tracked registry is accounts.example.yaml; the real one
+#      names where the captain actually banks and belongs in the private config overlay.
+#      Copying it back into the repo is the obvious way to undo that split by accident.
 #   2. Any .csv/.ofx/.qfx/.qif/.xls/.xlsx/.pdf outside tests/fixtures/ — these are the
 #      file types real statement exports come in (docs/AUDIT-PLAN.md's NFCU/Schwab export
-#      steps). tests/fixtures/ is exempt because it holds synthetic sample data on purpose.
+#      steps). tests/fixtures/ is exempt because it holds synthetic sample data on purpose
+#      — and because that exemption is a blind spot, what is actually IN those files is
+#      checked separately by scripts/check_fixture_provenance.py, run by the test suite.
 #   3. Anything named like a credential — .env files, *.pem/*.key/*.pfx/*.p12, private-key
 #      filenames, or a filename containing "secret"/"credential"/"password".
 #
@@ -56,7 +61,11 @@ while IFS= read -r file; do
 
     case "$file" in
         data/*|reports/*)
-            violations+=("$file :: under data/ or reports/, which are gitignored entirely (docs/DESIGN.md) — this file bypassed .gitignore (git add -f, or an absolute-path stage)")
+            violations+=("$file :: under data/ or reports/, which are not repository directories — real state lives in the private data home (docs/DESIGN.md). This file bypassed .gitignore (git add -f, or an absolute-path stage)")
+            continue
+            ;;
+        config/accounts.yaml)
+            violations+=("$file :: the real account registry belongs in the private config overlay, not in git. The tracked template is config/accounts.example.yaml")
             continue
             ;;
     esac

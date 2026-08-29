@@ -1,0 +1,48 @@
+# Account registry TEMPLATE. Every value below is invented.
+#
+# This is the tracked, public copy. The real registry is NOT in this repository
+# and must never be: an alias plus an institution says where a specific person
+# banks, which is account-specific personal data rather than generic
+# configuration. It lives in the private config overlay instead:
+#
+#   ${XDG_CONFIG_HOME:-$HOME/.config}/purser/accounts.yaml
+#
+# Set one up by copying this file and editing it:
+#
+#   mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/purser"
+#   cp config/accounts.example.yaml "${XDG_CONFIG_HOME:-$HOME/.config}/purser/accounts.yaml"
+#
+# `purser paths` prints where that resolves on this machine. There is no
+# repo-relative fallback: purser will tell you the registry is missing rather
+# than quietly read a copy from inside a checkout, because a checkout is
+# disposable and real state must not live in one.
+#
+# The alias IS the directory name under <data home>/raw/. Renaming an account
+# means renaming that directory and this key together.
+#
+# Deliberately carries no balances, account numbers, or routing numbers --
+# not even in the private copy. Real figures live only in the private data
+# home and the local DuckDB file.
+
+version: 1
+
+accounts:
+  - alias: example-checking
+    institution: Example Credit Union
+    type: checking
+    currency: USD
+    # Asset: a positive balance is money you have.
+    balance_sign: asset
+    # Which ingest adapter reads this account's exports. `nfcu_csv` is the one
+    # adapter that exists today; the name refers to the export FORMAT, not to
+    # who holds the account.
+    adapter: nfcu_csv
+
+  - alias: example-credit-card
+    institution: Example Credit Union
+    type: credit_card
+    currency: USD
+    # Liability: the institution reports a negative ledger balance when money
+    # is owed, so the same asset-style arithmetic works unchanged.
+    balance_sign: liability
+    adapter: nfcu_csv

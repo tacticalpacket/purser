@@ -1,17 +1,39 @@
-# Payee/keyword -> category rules for purser's deterministic categorization pass.
+# Payee/keyword -> category rules — the GENERIC, PUBLIC layer.
 #
 # docs/DESIGN.md keeps "deterministic rules before AI" from the original spec verbatim:
-# this file runs first, over every normalized merchant; the LLM only ever sees whatever
-# is left uncategorized after these rules run, and a human correcting a category adds or
-# edits a rule HERE rather than patching one transaction — "corrections become rules."
+# these rules run first, over every normalized merchant; the LLM only ever sees whatever
+# is left uncategorized after they run.
 #
-# Rules match against the NORMALIZED merchant string, i.e. after config/rules/merchants.yaml
-# aliasing has already run. Categorization is a two-stage pipeline: normalize, then match.
+# Rules match against the NORMALIZED merchant string, i.e. after merchant aliasing has
+# already run. Categorization is a two-stage pipeline: normalize, then match.
 #
-# ---
-# How a human adds a rule
+# ============================================================================
+# A CORRECTION GOES TO THE PRIVATE OVERLAY, NOT HERE. THIS FILE IS PUBLIC.
+# ============================================================================
 #
-#   Append an entry under `rules:`:
+# "A human correction becomes a rule" still holds — it is the mechanism that stops the
+# same fix being made twice. What changed is where the rule lands. A correction is made
+# against a real transaction on a real statement, so the rule that encodes it names a real
+# merchant, and this repository is public. Corrections go here:
+#
+#   ${XDG_CONFIG_HOME:-$HOME/.config}/purser/rules/categories.yaml
+#
+# `purser paths` prints where that resolves. Same file shape as this one, a top-level
+# `rules:` list. src/purser/core/config.py (load_category_rules) reads the overlay AND
+# this file and evaluates the OVERLAY'S RULES FIRST, so a private correction always beats
+# a generic rule — "overlay wins" and "first match wins" only agree if the overlay leads.
+#
+# ----------------------------------------------------------------------------
+# What MAY be added here
+#
+# Only rules that are generic: true for anyone, justified by a public source
+# (docs/AUDIT-PLAN.md), and not evidence of any particular person's spending. The two
+# below qualify because the audit plan names those billers as a general pattern, not
+# because anyone was observed paying them. If a rule would tell a reader where the captain
+# shops, eats, trains or gets treated, it belongs in the overlay. When in doubt: overlay.
+#
+# ----------------------------------------------------------------------------
+# How a rule is written (either layer)
 #
 #     - match: "ABC FITNESS"       # substring or exact string to look for
 #       match_type: substring       # substring (default) | exact
@@ -20,21 +42,25 @@
 #         Cite the real evidence — an audit-plan line, a statement you confirmed, a
 #         correction you made and don't want to repeat. Not a guess.
 #
-#   `category` must be an id that exists in config/categories.yaml — the referential
-#   integrity check (scripts/check_category_refs.py) fails the check otherwise.
+#   `category` must be an id that exists in config/categories.yaml. The taxonomy has no
+#   private overlay — it is generic by construction — so an overlay rule names a public
+#   category id. Check both layers with:
 #
-# ---
+#       scripts/check_category_refs.py            # tracked + the overlay, if present
+#       scripts/check_category_refs.py --no-private   # tracked layer alone
+#
+# ----------------------------------------------------------------------------
 # When two rules match
 #
-#   Rules are evaluated top to bottom. THE FIRST MATCH WINS. There is no separate
-#   priority field — the file's order IS the priority list. Practical effect:
-#     - Put specific rules (exact merchant names) above general ones (broad keywords),
-#       so a broad rule can't shadow a specific one just by sitting above it.
-#     - A correction that must override an existing rule goes ABOVE that rule, not at
-#       the end of the file.
-#     - The integrity check verifies every `category` exists; it does NOT detect one
-#       rule shadowing another. Keep entries specific and skim the file when adding one
-#       broad enough to worry about.
+#   Rules are evaluated top to bottom and THE FIRST MATCH WINS; the overlay's rules are
+#   evaluated before any of these. There is no priority field — order IS the priority.
+#     - Put specific rules (exact merchant names) above general ones (broad keywords), so
+#       a broad rule can't shadow a specific one just by sitting above it.
+#     - A correction that must override an existing rule goes ABOVE it — or in the
+#       overlay, which is already above every rule in this file.
+#     - The integrity check verifies every `category` exists; it does NOT detect one rule
+#       shadowing another. Keep entries specific and skim the file when adding one broad
+#       enough to worry about.
 
 rules:
   - match: "ABC FITNESS"

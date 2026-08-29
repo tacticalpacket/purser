@@ -3,8 +3,24 @@
 Every file here is **synthetic**. Same column shape and same encoding traps as
 the real Navy Federal exports; fabricated merchants, amounts and dates. None of
 it is a slice of the captain's data, and none of it may ever become one --
-docs/DESIGN.md keeps real financial data under `data/`, which is gitignored
-entirely.
+docs/DESIGN.md keeps real financial data outside every git worktree entirely.
+
+**This directory is the one place a real export could pass unnoticed.** Both of
+the repository's other protections exempt it on purpose: `.gitignore` re-includes
+it at the bottom of the file, and `scripts/no-real-data-guard.sh` skips it in the
+statement-extension rule, because sample data has to be committable. Everywhere
+else a file is refused for looking like a bank export; here it is admitted for
+looking like one.
+
+`scripts/check_fixture_provenance.py` -- run by `tests/test_fixture_provenance.py`
+-- is what closes that gap. It reads the contents and holds them to an
+**allowlist** of the markers below: the `SYNTHETIC` org and memo, zeroed
+`BANKID`/`ACCTID`, `SYNTH####` FITIDs, and the invented merchant names. Adding a
+fixture means adding its invented names to `SYNTHETIC_DESCRIPTIONS` in that
+script, and a statement-shaped file it has no reader for is a failure rather
+than a pass. There is deliberately no denylist of real merchant names: a
+committed list of where the captain actually shops would be the disclosure the
+check exists to prevent.
 
 The traps these fixtures deliberately reproduce, because they are what the
 adapter exists to survive:

@@ -1,15 +1,30 @@
 # ============================================================
 # .gitignore — hardened for financial material
 #
-# This repo holds personal financial data. The failure mode is a real
-# statement or export committed by accident and living in git history
-# forever. data/ is gitignored ENTIRELY per docs/DESIGN.md: it lives
-# only on disk and in the porter backup, never in Git.
+# This repository is public; the machine that develops it holds real financial
+# data. The failure mode is a real statement or export committed by accident and
+# living in git history forever. Real state lives OUTSIDE every worktree, in the
+# private data home — docs/DESIGN.md, "Public code, private data" — so most of
+# what follows is a second line of defence rather than the first.
 # ============================================================
 
-# --- Real financial data: never committed, per DESIGN.md ---
+# --- Real financial data: never committed ---
+# These are no longer repository directories at all. Real state lives outside
+# every worktree, in the private data home ($PURSER_HOME, else
+# $XDG_DATA_HOME/purser) — docs/DESIGN.md, "Public code, private data". Nothing
+# purser writes can land here any more.
+#
+# The rules stay anyway. A redundant ignore rule costs nothing, and a human who
+# drops an export into ./data/ out of eight months of habit is exactly the case
+# a redundant rule is for.
 /data/
 /reports/
+
+# --- The real account registry ---
+# config/accounts.example.yaml is tracked; the real accounts.yaml is personal
+# (it names where the captain actually banks) and lives in the private config
+# overlay, $XDG_CONFIG_HOME/purser/accounts.yaml.
+/config/accounts.yaml
 
 # --- Credentials and environment ---
 .env

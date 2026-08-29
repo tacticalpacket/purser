@@ -36,6 +36,47 @@ M1 and M2 are the whole original goal. Everything after is optional.
 
 Python 3.12 + DuckDB, SQL views for all analytics, pytest with fixture CSVs, no services, no containers required (it is a CLI against a local file), runs anywhere in the fleet. Rationale: one person maintains it, DuckDB reads CSVs natively and backs up as a single file to porter.
 
+## Public code, private data
+
+Two architectural requirements, not preferences. Everything below them follows from them.
+
+**1. The code is public; the data is not. They never share a directory.** Real financial
+state — raw exports, the DuckDB, generated reports, backups — lives outside every git
+worktree, in a private home resolved from the user, not from the tree:
+
+    data home    $PURSER_HOME, else ${XDG_DATA_HOME:-$HOME/.local/share}/purser
+    config home  ${XDG_CONFIG_HOME:-$HOME/.config}/purser
+
+There is no repo-relative fallback and no symlink from the repo into the private home. A
+fallback is what fires when someone forgets, which is precisely when it must not; a
+symlink puts the corpus back inside the tree for everything that follows links.
+
+**2. purser must be safe to develop with disposable working copies.** Firstmate hands each
+task a fresh isolated copy of the repository and deletes it when the task ends. Any design
+where state lives beside the code is unsafe under that model, and the unsafety is not
+theoretical: **the captain's real 7.6 MB reconciled ledger was found sitting inside a
+disposable Firstmate worker copy.** Every path used to resolve relative to the process
+working directory — `data/purser.duckdb`, `data/raw`, `config/accounts.yaml` — so "the
+ledger" meant "the ledger of whichever checkout you happened to be standing in". Real data
+had landed in a directory built to be thrown away, invisible to the safety check that
+refuses to discard unlanded work.
+
+Out-of-tree state therefore fixes an **observed failure mode**, not a tidiness complaint.
+It is also what makes the repository publishable: a worktree that contains no private
+state can be made public without a migration.
+
+Configuration splits along the same line, tracked generic first and private overlay
+second, with the overlay winning:
+
+- **Tracked and public**: the category taxonomy, deterministic rules justified by
+  `docs/AUDIT-PLAN.md` rather than by anyone's statement, and `config/accounts.example.yaml`.
+- **Private overlay**: the real `accounts.yaml` (aliases and institutions say where a
+  specific person banks), `rules/merchants.yaml` and `rules/categories.yaml` (a confirmed
+  merchant alias is disclosure on its own), and any secrets.
+
+"A human correction becomes a rule" survives intact — the rule is simply written to the
+overlay. Since rules are first-match-wins, the overlay's rules are evaluated first.
+
 ## Repo structure
 
 ```
@@ -44,12 +85,12 @@ purser/
 ├── docs/
 │   ├── DESIGN.md            # this file
 │   └── adr/                 # decisions, your usual format
-├── config/
-│   ├── accounts.yaml        # account registry: alias, institution, type, currency
+├── config/                  # GENERIC configuration only; public
+│   ├── accounts.example.yaml # registry template: alias, institution, type, currency
 │   ├── categories.yaml      # hierarchy from the audit plan
 │   └── rules/
-│       ├── merchants.yaml   # normalization aliases (confirmed mappings live here)
-│       └── categories.yaml  # payee/keyword -> category rules
+│       ├── merchants.yaml   # generic normalization aliases only
+│       └── categories.yaml  # generic payee/keyword -> category rules
 ├── src/purser/
 │   ├── ingest/              # one adapter per source format
 │   │   ├── nfcu_csv.py
@@ -61,22 +102,45 @@ purser/
 │   │   └── migrations/
 │   └── cli.py               # purser ingest | report | quality
 ├── queries/                 # SQL views: cashflow, habits, recurring, runway, quality
-├── reports/                 # generated output, gitignored
-├── tests/
-│   └── fixtures/            # sanitized sample CSVs, deterministic expected outputs
-└── data/                    # gitignored entirely, lives only on disk + porter backup
-    ├── raw/
-    └── purser.duckdb
+├── scripts/                 # the guards: no-real-data, fixture provenance, workflow policy
+├── githooks/
+├── conftest.py              # isolates the private home before pytest collection
+└── tests/
+    └── fixtures/            # SYNTHETIC sample CSVs, deterministic expected outputs
 ```
 
-`.gitignore`: `data/`, `reports/`, `.env`. Secrets never in Git; there are no secrets in v1 anyway since nothing talks to a network.
+Note what is *not* in the tree: no `data/`, no `reports/`. Those live in the private data
+home, outside every worktree, and nothing in the repository writes to a directory of
+either name:
+
+```
+$PURSER_HOME  (else ${XDG_DATA_HOME:-$HOME/.local/share}/purser)
+├── raw/
+│   └── <account-alias>/     # the immutable landing zone, one dir per alias
+├── purser.duckdb            # rebuildable from raw/ plus configuration
+├── reports/                 # generated output
+└── backups/
+
+${XDG_CONFIG_HOME:-$HOME/.config}/purser
+├── accounts.yaml            # the real registry
+└── rules/
+    ├── merchants.yaml       # confirmed mappings
+    └── categories.yaml      # corrections
+```
+
+`purser paths` prints both. `src/purser/core/paths.py` is the only thing that resolves
+them, and `src/purser/core/config.py` is the only thing that merges the two config layers.
+
+`.gitignore` still lists `data/`, `reports/` and `.env` as redundant insurance against a
+human's habit, not because anything writes there. Secrets never in Git; there are no
+secrets in v1 anyway since nothing talks to a network.
 
 ## Where the export files go
 
-Everything lands under `data/raw/`, one directory per account alias, and is never edited or renamed after landing. Adapters read from here; imports are idempotent so re-running over the same files is safe.
+Everything lands under **`<data home>/raw/`** — outside the repository, per "Public code, private data" — one directory per account alias, never edited or renamed after landing. Adapters read from here; imports are idempotent so re-running over the same files is safe.
 
 ```
-data/raw/
+$PURSER_HOME/raw/                # or ${XDG_DATA_HOME:-$HOME/.local/share}/purser/raw/
 ├── nfcu-checking/
 │   └── 2026-08-28_2025-03-01_to_2026-08-28.csv
 ├── nfcu-savings/
@@ -88,9 +152,11 @@ data/raw/
 └── schwab-ira/
 ```
 
-Filename convention: `<download-date>_<range-or-kind>.csv`. The download date prefix means overlapping re-exports sort cleanly and dedupe handles the overlap. PDFs, if you ever pull older statements, go in `data/raw/<alias>/statements/` for archive and reconciliation only.
+`purser paths` prints where that resolves. There is no repo-relative default: with no private home set up, purser says so rather than quietly landing a real export inside a checkout.
 
-Account aliases are declared once in `config/accounts.yaml`; directory name must match the alias exactly. That registry is the join point for everything downstream.
+Filename convention: `<download-date>_<range-or-kind>.csv`. The download date prefix means overlapping re-exports sort cleanly and dedupe handles the overlap. PDFs, if you ever pull older statements, go in `<data home>/raw/<alias>/statements/` for archive and reconciliation only.
+
+Account aliases are declared once in the private `accounts.yaml` (template: `config/accounts.example.yaml`); directory name must match the alias exactly. That registry is the join point for everything downstream.
 
 ## Division of labor across models
 
@@ -103,7 +169,7 @@ Account aliases are declared once in `config/accounts.yaml`; directory name must
 
 1. `git init purser`, lay down the structure above, commit.
 2. Write `schema.sql` (accounts, transactions, transfers, merchants, categories, balances, import_log with provenance).
-3. Build `nfcu_csv.py` against one real checking export dropped in `data/raw/nfcu-checking/`.
+3. Build `nfcu_csv.py` against one real checking export dropped in `<data home>/raw/nfcu-checking/`.
 4. Fingerprint + dedupe + import_log, prove idempotency by importing the same file twice.
 5. Balance check against the account's known ending balance.
 Then Schwab adapter, then transfers, then the M2 views.

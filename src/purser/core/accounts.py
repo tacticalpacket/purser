@@ -1,36 +1,34 @@
-"""The config/accounts.yaml registry loader.
+"""The account registry loader.
 
-DESIGN.md: the registry is the join point for everything downstream, and the
-directory name under data/raw/ must match the alias exactly.
+The registry is the join point for everything downstream, and the directory
+name under the raw root must match the alias exactly.
+
+It is **not** tracked. Aliases and institution names describe where the captain
+actually banks, so the real file lives in the private config overlay
+(`purser.core.paths.registry_path`) and the repository ships only
+`config/accounts.example.yaml`. `purser.core.config` explains the split.
+
+Every default here resolves lazily, at call time, from the private home --
+never from the working directory and never at import time. A module-level
+constant holding a resolved path is the exact bug this file used to have:
+`Path("config/accounts.yaml")` meant "whatever checkout you are standing in".
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
+from purser.core import paths
+from purser.core.config import load_account_registry
 
-DEFAULT_REGISTRY = Path("config/accounts.yaml")
 
+def load_registry(path: str | Path | None = None) -> list[dict]:
+    """Load and validate the account registry.
 
-def load_registry(path: str | Path = DEFAULT_REGISTRY) -> list[dict]:
-    """Load and validate the account registry."""
-    path = Path(path)
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    accounts = data.get("accounts") or []
-    if not accounts:
-        raise ValueError(f"{path} declares no accounts")
-
-    seen: set[str] = set()
-    for acct in accounts:
-        for required in ("alias", "institution", "type"):
-            if not acct.get(required):
-                raise ValueError(f"{path}: account entry missing {required!r}: {acct!r}")
-        alias = acct["alias"]
-        if alias in seen:
-            raise ValueError(f"{path}: duplicate alias {alias!r}")
-        seen.add(alias)
-    return accounts
+    `path` defaults to the private overlay's `accounts.yaml`, resolved now
+    rather than at import.
+    """
+    return load_account_registry(Path(path) if path is not None else None)
 
 
 def find_account(accounts: list[dict], alias: str) -> dict:
@@ -40,6 +38,10 @@ def find_account(accounts: list[dict], alias: str) -> dict:
     raise KeyError(f"account alias {alias!r} is not declared in the registry")
 
 
-def raw_dir(alias: str, data_root: str | Path = "data/raw") -> Path:
+def raw_dir(alias: str, data_root: str | Path | None = None) -> Path:
     """The immutable landing directory for an alias."""
-    return Path(data_root) / alias
+    root = Path(data_root) if data_root is not None else paths.raw_root()
+    return root / alias
+
+
+__all__ = ["find_account", "load_registry", "raw_dir"]

@@ -1,6 +1,11 @@
-"""purser command line: ingest | balance-check | quality.
+"""purser command line: ingest | balance-check | quality | sniff | paths.
 
 Everything runs against local files. Nothing here talks to a network.
+
+Every real path -- the ledger, the export landing zone, the account registry --
+resolves from the private home in `purser.core.paths`, never from the working
+directory. The defaults below are `None` on purpose: they resolve at call time,
+so the answer cannot depend on which checkout the process was started in.
 """
 
 from __future__ import annotations
@@ -10,19 +15,30 @@ import sys
 from pathlib import Path
 
 from purser import __version__
-from purser.core import balance_check
+from purser.core import balance_check, paths
 from purser.core.accounts import find_account, load_registry, raw_dir
+from purser.core.config import MissingRegistry
 from purser.core.importer import import_file
 from purser.db.database import connect, sync_accounts
 from purser.ingest import nfcu_csv
 
-DEFAULT_DB = Path("data/purser.duckdb")
-DEFAULT_REGISTRY = Path("config/accounts.yaml")
+
+def _db_path(args) -> Path:
+    return args.db if args.db is not None else paths.database_path()
+
+
+def _data_root(args) -> Path:
+    return args.data_root if args.data_root is not None else paths.raw_root()
 
 
 def _open(args):
-    con = connect(args.db)
-    sync_accounts(con, load_registry(args.registry))
+    # The registry is read first on purpose: if it is missing, nothing should have
+    # been created on disk before the user is told why.
+    accounts = load_registry(args.registry)
+    db = _db_path(args)
+    paths.ensure_private_dir(db.parent)
+    con = connect(db)
+    sync_accounts(con, accounts)
     return con
 
 
@@ -43,12 +59,13 @@ def cmd_ingest(args) -> int:
     con = _open(args)
     accounts = load_registry(args.registry)
     aliases = [args.account] if args.account else [a["alias"] for a in accounts]
+    data_root = _data_root(args)
 
     exit_code = 0
     for alias in aliases:
         acct = find_account(accounts, alias)
         adapter = acct.get("adapter", nfcu_csv.ADAPTER_NAME)
-        files = [Path(args.file)] if args.file else _exports(alias, args.data_root, ".csv")
+        files = [Path(args.file)] if args.file else _exports(alias, data_root, ".csv")
         if not files:
             print(f"{alias}: no CSV exports found")
             continue
@@ -71,10 +88,11 @@ def cmd_balance_check(args) -> int:
     con = _open(args)
     accounts = load_registry(args.registry)
     aliases = [args.account] if args.account else [a["alias"] for a in accounts]
+    data_root = _data_root(args)
 
     exit_code = 0
     for alias in aliases:
-        ofx_files = _exports(alias, args.data_root, ".ofx")
+        ofx_files = _exports(alias, data_root, ".ofx")
         if not ofx_files:
             print(f"{alias}: no OFX export to reconcile against; skipped")
             continue
@@ -125,12 +143,22 @@ def cmd_sniff(args) -> int:
     return 0
 
 
+def cmd_paths(args) -> int:
+    """Where private state resolves to. Creates nothing; prints locations only."""
+    print(paths.describe())
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="purser", description=__doc__)
     parser.add_argument("--version", action="version", version=f"purser {__version__}")
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
-    parser.add_argument("--data-root", type=Path, default=Path("data/raw"))
+    parser.add_argument("--db", type=Path, default=None,
+                        help="ledger file; default is purser.duckdb in $PURSER_HOME")
+    parser.add_argument("--registry", type=Path, default=None,
+                        help="account registry; default is accounts.yaml in the "
+                             "private config overlay")
+    parser.add_argument("--data-root", type=Path, default=None,
+                        help="export landing zone; default is raw/ in $PURSER_HOME")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("ingest", help="import exports into the ledger")
@@ -150,13 +178,21 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("sniff", help="structural inspection of one export file")
     p.add_argument("file")
     p.set_defaults(func=cmd_sniff)
+
+    p = sub.add_parser("paths", help="show where private state resolves to")
+    p.set_defaults(func=cmd_paths)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    args.db.parent.mkdir(parents=True, exist_ok=True)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (MissingRegistry, paths.InsecureDataHome) as exc:
+        # Both mean "the private home is not set up the way it has to be". A
+        # traceback buries the one sentence that says how to fix it.
+        print(f"purser: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

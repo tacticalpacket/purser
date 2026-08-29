@@ -1,34 +1,50 @@
-# Merchant normalization aliases for purser.
+# Merchant normalization aliases — the GENERIC, PUBLIC layer.
 #
-# docs/DESIGN.md: this is where "confirmed mappings live." Generic normalization
-# (strip store numbers, dates, trailing IDs, "POS"/"ACH" prefixes, city codes —
-# docs/AUDIT-PLAN.md Phase 1 Step 2) runs first and handles most descriptors on its own.
-# This file holds the exceptions it can't: a payment-processor string, a DBA, a
-# truncated or garbled descriptor that a human has actually confirmed maps to a real
-# merchant name.
+# Generic normalization (strip store numbers, dates, trailing IDs, "POS"/"ACH" prefixes,
+# city codes — docs/AUDIT-PLAN.md Phase 1 Step 2) runs first and handles most descriptors
+# on its own. An alias file holds the exceptions it can't: a payment-processor string, a
+# DBA, a truncated or garbled descriptor that maps to a real merchant name.
 #
-# Pipeline order: raw statement string -> generic normalization -> alias lookup (this
-# file) -> category rules (config/rules/categories.yaml). An alias key is matched
-# against generic normalization's OUTPUT, not the raw statement string.
+# Pipeline order: raw statement string -> generic normalization -> alias lookup -> category
+# rules (config/rules/categories.yaml). An alias key is matched against generic
+# normalization's OUTPUT, not the raw statement string.
 #
-# ---
-# How a human adds one
+# ============================================================================
+# CONFIRMED MAPPINGS DO NOT GO IN THIS FILE. THIS FILE IS PUBLIC.
+# ============================================================================
 #
-#   Add an entry under `aliases:`, keyed by the normalized-but-still-wrong string exactly
-#   as it comes out of generic normalization, with the confirmed display name as the
-#   value:
+# This file used to instruct a human to add "mappings the captain has verified against his
+# own statement" right here. That instruction was the leak: this repository is public, and
+# an alias IS disclosure. "SQ *<garbled>" -> "Northgate Physical Therapy" states that a
+# specific person goes to that clinic — the amount and the date are not needed to say it.
+# A file designed to accumulate confirmed real mappings, tracked in a public repository,
+# leaks by working as intended.
+#
+# So the workflow is retargeted. A confirmed mapping goes to the PRIVATE OVERLAY:
+#
+#   ${XDG_CONFIG_HOME:-$HOME/.config}/purser/rules/merchants.yaml
 #
 #     aliases:
 #       "SQ *SOME GARBLED STRING": "Some Real Merchant"
 #
-#   Confirm before adding. This file holds mappings the captain has verified against his
-#   own statement, not guesses — docs/AUDIT-PLAN.md's privacy note and docs/DESIGN.md's
-#   "unique merchant strings, not full transaction rows" rule both assume every entry
-#   here is a settled fact, not an inference a hosted model made unsupervised.
+# `purser paths` prints where that resolves. The loader
+# (src/purser/core/config.py: load_merchant_aliases) reads this tracked file first and
+# then the overlay, and an overlay key REPLACES a tracked key — so the private layer
+# always wins and nothing is lost by keeping a mapping out of git.
 #
-# ---
-# No real merchant strings are seeded here yet: none were available when this file was
-# created (see PR body — this task's inputs were the two design docs, not the real
-# statements). Add the first confirmed mapping the next time a raw descriptor needs one.
+# Confirm before adding, in either layer: docs/AUDIT-PLAN.md's privacy note and
+# docs/DESIGN.md's "unique merchant strings, not full transaction rows" rule both assume
+# every entry is a settled fact, not an inference a hosted model made unsupervised.
+#
+# ----------------------------------------------------------------------------
+# What MAY be added here
+#
+# Only mappings that are generic — true for anyone, derived from a public source such as
+# docs/AUDIT-PLAN.md or a payment processor's documented descriptor format, and not
+# evidence of any particular person's spending. If adding an entry would tell a reader
+# something about the captain, it belongs in the overlay instead. When in doubt: overlay.
+#
+# This file is empty and has always been empty. Nothing had to be removed when the split
+# landed; the door was closed before anything walked through it.
 
 aliases: {}
