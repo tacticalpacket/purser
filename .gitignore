@@ -1,0 +1,64 @@
+# ============================================================
+# .gitignore — hardened for financial material
+#
+# This repo holds personal financial data. The failure mode is a real
+# statement or export committed by accident and living in git history
+# forever. data/ is gitignored ENTIRELY per docs/DESIGN.md: it lives
+# only on disk and in the porter backup, never in Git.
+# ============================================================
+
+# --- Real financial data: never committed, per DESIGN.md ---
+/data/
+/reports/
+
+# --- Credentials and environment ---
+.env
+.env.*
+*.pem
+*.key
+credentials*
+secrets*
+
+# --- Statement / export formats, wherever they land ---
+# tests/fixtures/ holds SANITIZED samples only and is re-included below.
+*.csv
+*.ofx
+*.qfx
+*.qif
+*.xls
+*.xlsx
+*.pdf
+
+# --- Local databases ---
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Python / tooling artefacts ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# --- OS and editor noise ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Explicit re-inclusions ---
+# gitignore is last-match-wins, so these MUST stay at the bottom.
+# Only sanitized fixture data may be re-included here.
+!/tests/fixtures/
+!/tests/fixtures/**
