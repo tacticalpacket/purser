@@ -273,3 +273,52 @@ def test_cli_rejects_an_undeclared_account_with_advice(configured, capsys):
     err = capsys.readouterr().err
     assert err.startswith("purser: account alias 'nfcu-savings' is not in the registry")
     assert "purser paths" in err
+
+
+# --- the stored day must survive the host's timezone -------------------------
+
+@pytest.mark.parametrize("session_tz", ["America/Los_Angeles", "Pacific/Honolulu"])
+def test_the_stated_day_reads_back_unchanged_west_of_utc(con, session_tz):
+    """`as_of` is a TIMESTAMPTZ encoding a *day*, and it must decode as that day.
+
+    A bare `CAST(as_of AS DATE)` resolves in the session's timezone, so the
+    canonical 00:00 UTC instant a day is written as reads back as the day
+    before on any host behind UTC. That shifts every reconciliation boundary
+    by one, both masking real edge-day errors and inventing others.
+
+    `database.connect` pins the session to UTC, which is why this is not
+    already breaking in ordinary use -- but the round trip must not *depend* on
+    that, because the pin is one `SET TimeZone` away from being undone by
+    anything else sharing the connection.
+    """
+    stated_balance.record(
+        con, account_alias="nfcu-checking", as_of="2025-03-31", amount="1855.03"
+    )
+    account_id = con.execute(
+        "SELECT account_id FROM accounts WHERE alias = 'nfcu-checking'"
+    ).fetchone()[0]
+
+    con.execute(f"SET TimeZone='{session_tz}'")
+    assert [row[0] for row in stated_balance.series(con, account_id)] == [
+        date(2025, 3, 31)
+    ]
+
+
+def test_the_month_boundary_does_not_move_with_the_session_timezone(con):
+    """The failure the day shift causes: a month-end figure lands in the month before.
+
+    A balance stated on the last day of March must be March's, whatever
+    timezone the session carries. Read a day early it becomes 2025-03-30, and
+    a figure stated on the 1st of a month would fall into the previous month
+    entirely -- the report would attribute it to a month it was never about.
+    """
+    stated_balance.record(
+        con, account_alias="nfcu-checking", as_of="2025-04-01", amount="1855.03"
+    )
+    account_id = con.execute(
+        "SELECT account_id FROM accounts WHERE alias = 'nfcu-checking'"
+    ).fetchone()[0]
+
+    con.execute("SET TimeZone='America/Los_Angeles'")
+    day = stated_balance.series(con, account_id)[0][0]
+    assert (day.year, day.month) == (2025, 4)

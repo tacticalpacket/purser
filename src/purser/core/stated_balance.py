@@ -41,6 +41,13 @@ at the end of 2025-03-31". The column is a TIMESTAMPTZ, so the day is stored
 canonically as its 00:00 UTC instant, and every comparison against it is made
 on dates -- `posted_date <= as_of`, inclusive of the whole named day. The
 timestamp is an encoding of the date, not a claim about a time of day.
+
+Because it is an encoding, it must decode the same way everywhere. Reading the
+day back is done in UTC **explicitly** (`as_of AT TIME ZONE 'UTC'` in `series`),
+not by trusting whatever timezone the session happens to carry: a bare
+`CAST(as_of AS DATE)` resolves in the session's zone, so west of UTC the
+canonical midnight reads back as the day before and every reconciliation
+boundary moves by one.
 """
 
 from __future__ import annotations
@@ -205,8 +212,15 @@ def series(con: duckdb.DuckDBPyConnection, account_id: int) -> list[tuple[date, 
     that: its independent input must not be able to pick up anything derived
     from the transactions it is checking.
     """
+    # `AT TIME ZONE 'UTC'` before the cast, never a bare CAST: `as_of` is a
+    # TIMESTAMPTZ and a bare cast resolves it in the *session's* timezone, so
+    # the 00:00 UTC instant a day is written as reads back as the previous day
+    # on any host behind UTC. That would shift every reconciliation boundary by
+    # one, masking real edge-day errors and inventing others. `database.connect`
+    # pins the session to UTC, but this must not depend on that: the day has to
+    # round-trip identically whoever opened the connection.
     rows = con.execute(
-        "SELECT CAST(as_of AS DATE), amount, note FROM balances "
+        "SELECT CAST(as_of AT TIME ZONE 'UTC' AS DATE), amount, note FROM balances "
         "WHERE account_id = ? AND balance_type = ? AND source_kind = ? "
         "ORDER BY as_of",
         [account_id, BALANCE_TYPE, SOURCE_KIND],

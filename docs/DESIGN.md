@@ -277,7 +277,15 @@ account. Same for a `cat` of a CSV, just more honestly signposted.
    monthly statement or the online balance on download day, stored with
    `source_kind='stated'`; the monthly check then compares it against the
    balance derived from the imported ledger, and the delta is what catches a bad
-   import. The OFX `<LEDGERBAL><BALAMT>` parity check was a **one-time proof
+   import. Reconcile **every consecutive pair of stated figures**, not one
+   figure per calendar month: deciding a month by the last figure in it leaves
+   the interval before it checked by nothing, and an import error landing there
+   passes while the report looks healthy. Be exact about the guarantee, too --
+   a zero delta means the interval's *net* movement reconciles, not that every
+   transaction was imported exactly once, because offsetting errors (a dropped
+   row and an equal duplicate) cancel inside a sum. *Future item, not built:*
+   a transaction-level completeness check, comparing rows rather than totals,
+   would close that gap. The OFX `<LEDGERBAL><BALAMT>` parity check was a **one-time proof
    that the adapter was right**, run while an OFX export still existed -- it is
    not the ongoing mechanism and cannot be, since no new OFX will ever arrive.
    Never reconcile against `<AVAILBAL>`: it nets pending holds the ledger has

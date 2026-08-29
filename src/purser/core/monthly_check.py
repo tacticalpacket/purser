@@ -27,29 +27,60 @@ Neither half can quietly become the other. If a future change makes
 `_ledger_movement` consult a stated balance, or `series` fall back to summing
 the ledger, the check is worthless from that moment and nothing will say so.
 
-The arithmetic: roll forward, month by month
---------------------------------------------
+The arithmetic: roll forward, one stated figure at a time
+---------------------------------------------------------
 The ledger holds movement, not position -- an export starting in March says
 nothing about what the account held in February. So a stated figure is needed
-as the baseline, and each later stated figure is checked against it:
+as the baseline, and each later stated figure is checked against the one
+immediately before it:
 
-    derived(month) = anchor.amount + net movement over (anchor.as_of, month_end]
-    delta          = derived - stated(month)
+    derived(figure) = anchor.amount + net movement over (anchor.as_of, figure.as_of]
+    delta           = derived - figure.amount
 
-where `anchor` is the most recent stated figure *before* the one being checked.
-Rolling forward from the nearest prior stated balance rather than from the very
-first one localises a break: the month whose delta is non-zero is the month the
-bad import landed in, instead of every month after it.
+where `anchor` is the stated figure immediately preceding it *by date*. Rolling
+forward from the nearest prior stated balance rather than from the very first
+one localises a break: the interval whose delta is non-zero is the interval the
+bad import landed in, instead of every one after it.
 
-A delta of zero means every transaction between the two statement dates was
-imported exactly once, with the right sign. A non-zero delta is a real defect:
-a dropped row, a duplicated row, an inverted sign, or a missing export.
+The unit of the check is the interval, not the calendar month
+-------------------------------------------------------------
+**Every consecutive pair of stated figures is reconciled -- one row each.** A
+month is only how the report is grouped and sorted, so a month holding two
+stated figures produces two rows, and both intervals are checked.
+
+This is load-bearing, not cosmetic. Deciding a month by the last figure in it
+and anchoring on the most recent figure strictly earlier by date silently drops
+whole intervals: with figures on the 31st of January, the 15th of March and the
+31st of March, March is checked as 15th -> 31st, February reports `not stated`,
+and nothing at all reconciles the January-to-March interval. An import error
+landing in that window passes while the report looks healthy -- which is the one
+failure this module exists to prevent. **No interval between two consecutive
+stated figures may go unreconciled, and no unchecked interval may be invisible
+in the output.**
+
+What a zero delta does and does not prove
+-----------------------------------------
+It proves the **net** movement over the interval reconciles: the sum of what was
+imported between the two statement dates equals the difference between the two
+stated figures. That is what catches an ordinary bad import -- a dropped row, a
+duplicated row, an inverted sign, a missing export -- because any one of those
+moves the net.
+
+It is **not** proof that every transaction was imported exactly once. The check
+compares two sums, and offsetting errors cancel inside a sum: a dropped debit
+and an equal duplicated debit net to zero, as does any other pair of errors of
+equal size and opposite effect. Transaction-level completeness would need a
+different mechanism, comparing rows rather than totals; see `docs/DESIGN.md`.
+A non-zero delta, by contrast, is unambiguous -- it is a real defect.
 
 Three outcomes are not failures and are not passes:
 
-    not stated   no figure was entered for that month. Reported as such, so an
+    not stated   no figure was entered for any day in that month, so the month
+                 has no independent figure of its own. Reported as such, so an
                  unchecked month is visibly unchecked rather than silently
-                 counted as fine.
+                 counted as fine. (Its movement may still sit inside a
+                 reconciled interval spanning it; that is not the same as the
+                 month having been checked.)
     anchor       the earliest stated figure. It *is* the baseline, so there is
                  nothing independent to check it against. Calling it a pass
                  would be the circularity this module exists to avoid.
@@ -87,19 +118,25 @@ ANCHOR = "anchor"
 
 @dataclass(frozen=True)
 class MonthCheck:
-    """One account, one month, one verdict."""
+    """One verdict: either one reconciled interval, or one month with no figure.
+
+    `month` groups the report; it does not decide the check. A month holding two
+    stated figures yields two rows, one per interval, because the interval is
+    the unit that gets reconciled. `anchor_as_of` -> `stated_as_of` is the
+    interval a checked row covers.
+    """
 
     account_alias: str
     balance_sign: str
-    month: str                        # 'YYYY-MM'
+    month: str                        # 'YYYY-MM'; how the report groups, not the unit
     status: str                       # OK | MISMATCH | NOT_STATED | ANCHOR
     stated: Decimal | None            # normalized; what the captain entered
     stated_as_of: date | None
     derived: Decimal | None           # normalized; anchor + imported movement
-    delta: Decimal | None             # derived - stated; 0.00 means reconciled
+    delta: Decimal | None             # derived - stated; 0.00 means the net reconciles
     anchor_as_of: date | None
     anchor_amount: Decimal | None
-    net_movement: Decimal | None      # imported movement over the rolled window
+    net_movement: Decimal | None      # imported movement over (anchor_as_of, stated_as_of]
     note: str | None
 
     @property
@@ -156,7 +193,13 @@ def _ledger_movement(con, account_id: int, *, after: date, through: date) -> Dec
 def check_account(
     con: duckdb.DuckDBPyConnection, *, account_alias: str
 ) -> list[MonthCheck]:
-    """Every month of one account, oldest first."""
+    """One account: every stated interval, plus every month that has no figure.
+
+    Oldest first. Rows come from two sources that cannot overlap -- one per
+    stated figure, and one per calendar month holding none -- so every interval
+    between consecutive stated figures is reconciled and every month without an
+    independent figure still says so.
+    """
     account_id = database.account_id(con, account_alias)
     balance_sign = con.execute(
         "SELECT balance_sign FROM accounts WHERE account_id = ?", [account_id]
@@ -167,36 +210,18 @@ def check_account(
     if not stated and extent is None:
         return []
 
-    # One stated figure per month decides that month: the latest one in it.
-    # Earlier ones in the same month still serve as anchors for what follows.
-    by_month: dict[str, tuple[date, Decimal, str | None]] = {}
-    for day, amount, note in stated:
-        by_month[f"{day.year:04d}-{day.month:02d}"] = (day, amount, note)
-
     bounds = [day for day, _, _ in stated]
     if extent is not None:
         bounds.extend(extent)
-    months = _months(min(bounds), max(bounds))
 
     results: list[MonthCheck] = []
-    for month in months:
-        entry = by_month.get(month)
-        if entry is None:
-            results.append(
-                MonthCheck(
-                    account_alias=account_alias, balance_sign=balance_sign,
-                    month=month, status=NOT_STATED, stated=None, stated_as_of=None,
-                    derived=None, delta=None, anchor_as_of=None, anchor_amount=None,
-                    net_movement=None, note=None,
-                )
-            )
-            continue
 
-        day, amount, note = entry
-        anchor = next(
-            ((d, a) for d, a, _ in reversed(stated) if d < day), None
-        )
-        if anchor is None:
+    # One row per stated figure. The first is the baseline; every later one is
+    # checked against its immediate predecessor, so no consecutive pair is
+    # skipped -- not even two figures landing in the same calendar month.
+    for index, (day, amount, note) in enumerate(stated):
+        month = f"{day.year:04d}-{day.month:02d}"
+        if index == 0:
             # The baseline. Checking it would mean checking it against itself.
             results.append(
                 MonthCheck(
@@ -208,7 +233,7 @@ def check_account(
             )
             continue
 
-        anchor_day, anchor_amount = anchor
+        anchor_day, anchor_amount, _ = stated[index - 1]
         movement = _ledger_movement(con, account_id, after=anchor_day, through=day)
         derived = (anchor_amount + movement).quantize(CENTS)
         delta = (derived - amount).quantize(CENTS)
@@ -221,6 +246,25 @@ def check_account(
                 net_movement=movement, note=note,
             )
         )
+
+    # ...and one row per month of the span that holds no stated figure at all,
+    # so a month with nothing independent behind it is visibly unchecked.
+    with_a_figure = {f"{day.year:04d}-{day.month:02d}" for day, _, _ in stated}
+    for month in _months(min(bounds), max(bounds)):
+        if month in with_a_figure:
+            continue
+        results.append(
+            MonthCheck(
+                account_alias=account_alias, balance_sign=balance_sign,
+                month=month, status=NOT_STATED, stated=None, stated_as_of=None,
+                derived=None, delta=None, anchor_as_of=None, anchor_amount=None,
+                net_movement=None, note=None,
+            )
+        )
+
+    # Month first, then the interval's end date, so a month holding two figures
+    # reads in the order the intervals actually run.
+    results.sort(key=lambda row: (row.month, row.stated_as_of or date.min))
     return results
 
 

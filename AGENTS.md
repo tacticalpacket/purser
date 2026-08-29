@@ -182,15 +182,29 @@ Documented in full in `src/purser/ingest/nfcu_csv.py`; the short version:
   by separate functions that touch separate tables, and the module headers say why. A
   check that computes both sides from the same rows cannot fail, so it proves nothing and
   nothing will report that it has stopped working.
+- **The unit of the check is the interval between two consecutive stated figures, not the
+  calendar month.** Every consecutive pair is reconciled, so a month holding two figures
+  produces two rows; the month only groups the report. Deciding a month by the last figure
+  in it leaves the interval before that figure reconciled by nothing, and an import error
+  landing there passes while the report reads healthy. A month with no figure of its own
+  still reports `not stated`, and the earliest stated figure reports `anchor`. Neither is
+  a pass; an unchecked month must never be absorbed silently.
+- **A zero delta proves the interval's *net* movement reconciles — nothing stronger.**
+  The check compares two sums, so offsetting errors cancel: a dropped row and an equal
+  duplicate net to zero. Do not let a docstring or CLI string reclaim "every transaction
+  imported exactly once"; `tests/test_monthly_check.py` pins both the limitation and the
+  wording. Transaction-level completeness is a noted future item in `docs/DESIGN.md`, not
+  something to build in passing.
 - Balance signs are normalized **once, at entry**, exactly as the CSV adapter normalizes
   transaction direction: a credit-card figure is typed as the statement shows it (amount
   owed, positive) and stored negative. That is what lets a card reconcile with the same
   arithmetic as a checking account, with no per-type branch downstream.
 - `as_of` is inclusive of its whole day, and `database.connect` pins the DuckDB session
   timezone to UTC so a `DATE` vs `TIMESTAMPTZ` comparison cannot shift by a day on a
-  machine west of UTC.
-- A month with no stated figure is reported `not stated`, and the earliest stated figure is
-  reported `anchor`. Neither is a pass; an unchecked month has to look unchecked.
+  machine west of UTC. **Reading a day back out of a `TIMESTAMPTZ` converts in UTC
+  explicitly** (`CAST(as_of AT TIME ZONE 'UTC' AS DATE)`); a bare cast resolves in the
+  session's zone, and one `SET TimeZone` anywhere would move every reconciliation boundary
+  by a day. The pin is defence in depth, not the guarantee.
 
 ## Categorization
 

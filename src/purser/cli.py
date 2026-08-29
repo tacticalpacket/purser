@@ -150,7 +150,14 @@ def cmd_record_balance(args) -> int:
 
 
 def cmd_monthly_check(args) -> int:
-    """Derived-versus-stated, per account per month. The ongoing reconciliation."""
+    """Derived-versus-stated, one row per stated interval. The ongoing reconciliation.
+
+    Every consecutive pair of stated figures is reconciled, so a month holding
+    two figures prints two rows -- the interval, not the month, is what gets
+    checked. A zero delta means the interval's *net* movement reconciles; it is
+    not proof that every transaction was imported exactly once. See
+    `purser.core.monthly_check`.
+    """
     con = _open(args)
     if args.account:
         results = monthly_check.check_account(con, account_alias=args.account)
@@ -166,14 +173,19 @@ def cmd_monthly_check(args) -> int:
             print(f"{label}  not stated")
             continue
         if row.status == monthly_check.ANCHOR:
-            print(f"{label}  anchor    stated {row.shown(row.stated)} "
+            print(f"{label}  anchor    {row.stated_as_of}  "
+                  f"stated {row.shown(row.stated)} "
                   f"(baseline; nothing earlier to check it against)")
             continue
         verdict = "OK      " if row.reconciles else "MISMATCH"
+        # The interval is printed, not just the month: a month can hold two
+        # stated figures and so produce two rows, and each row has to say which
+        # window it reconciled.
         print(
-            f"{label}  {verdict}  stated {row.shown(row.stated)}  "
-            f"derived {row.shown(row.derived)}  delta {row.shown(row.delta)}  "
-            f"(from {row.anchor_as_of} + movement {row.shown(row.net_movement)})"
+            f"{label}  {verdict}  {row.anchor_as_of} -> {row.stated_as_of}  "
+            f"stated {row.shown(row.stated)}  derived {row.shown(row.derived)}  "
+            f"delta {row.shown(row.delta)}  "
+            f"(movement {row.shown(row.net_movement)})"
         )
         if not row.reconciles:
             exit_code = 1
@@ -258,7 +270,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "monthly-check",
-        help="compare the derived balance against the stated one, month by month",
+        help="reconcile the derived balance against the stated one, interval by interval",
+        description=(
+            "Reconciles every consecutive pair of stated figures: derived = the "
+            "earlier figure plus imported movement since it, against the later "
+            "figure. A zero delta means that interval's NET movement reconciles "
+            "-- it does not prove every transaction was imported exactly once, "
+            "since offsetting errors cancel in a sum. A non-zero delta is a real "
+            "defect. Months with no stated figure are reported 'not stated'."
+        ),
     )
     p.add_argument("--account", help="alias; default is every declared account")
     p.set_defaults(func=cmd_monthly_check)

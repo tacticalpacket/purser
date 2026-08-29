@@ -5,14 +5,24 @@ that `tests/test_balance_check.py` used to: they have to show the check can
 actually fail. A reconciliation that always passes is worse than none, because
 it is believed.
 
-The arithmetic under test, per month:
+The arithmetic under test, once per consecutive pair of stated figures:
 
-    derived = (nearest earlier stated figure) + (imported movement since it)
-    delta   = derived - (this month's stated figure)
+    derived = (the stated figure immediately before it) + (imported movement since)
+    delta   = derived - (this stated figure)
+
+The unit is the interval, not the calendar month: a month holding two stated
+figures yields two rows, and both intervals are checked. Skipping one is the
+defect these tests exist to prevent, because an import error landing inside a
+skipped interval passes while the report still reads healthy.
 
 The two inputs come from different tables and different modules on purpose. If
 the derived figure were computed from the same transactions it validates, delta
 would be zero by construction.
+
+A zero delta means the interval's **net** movement reconciles. It is not proof
+that every transaction was imported exactly once -- offsetting errors cancel
+inside a sum -- and one of the tests below pins exactly that, so the stronger
+claim cannot quietly return to the docstrings.
 
 All figures below come from the synthetic fixtures in `tests/fixtures/`:
 the checking sample nets +855.03 over March 2025, and the two overlapping
@@ -420,3 +430,213 @@ def test_cli_monthly_check_shows_a_card_in_statement_terms(configured, capsys):
 def test_cli_monthly_check_says_so_when_there_is_nothing_to_check(configured, capsys):
     assert cli.main(["monthly-check", "--account", "nfcu-checking"]) == 0
     assert "nothing to check" in capsys.readouterr().out
+
+
+# --- no interval between two stated figures may go unchecked -----------------
+
+def stated_intervals(results):
+    """Every (anchor, stated) pair the check actually reconciled."""
+    return [
+        (row.anchor_as_of, row.stated_as_of)
+        for row in results
+        if row.checked
+    ]
+
+
+def test_every_consecutive_pair_of_stated_figures_is_reconciled(checking_ledger):
+    """Three figures, two of them in one month. Both intervals must be checked.
+
+    Deciding a month by the last figure in it and anchoring on the most recent
+    figure strictly earlier by date leaves the interval *before* the same-month
+    figure reconciled by nothing at all: the month reports the short interval,
+    the months in between report `not stated`, and the long window vanishes.
+    """
+    for as_of, amount in (
+        ("2025-02-28", "1000.00"),
+        ("2025-04-08", "3189.05"),   # 1000.00 + March + April through 04-08
+        ("2025-04-30", "3270.40"),
+    ):
+        stated_balance.record(
+            checking_ledger, account_alias="nfcu-checking",
+            as_of=as_of, amount=amount,
+        )
+    results = monthly_check.check_account(
+        checking_ledger, account_alias="nfcu-checking")
+
+    assert stated_intervals(results) == [
+        (date(2025, 2, 28), date(2025, 4, 8)),
+        (date(2025, 4, 8), date(2025, 4, 30)),
+    ]
+    assert all(row.reconciles for row in results if row.checked)
+
+
+def test_an_import_error_inside_a_skipped_interval_does_not_pass_silently(checking_ledger):
+    """The failure the gap causes, stated as the defect it is.
+
+    March is spanned by the 2025-02-28 -> 2025-04-08 interval and by nothing
+    else. Drop a March row and, if that interval is never reconciled, every
+    figure still agrees and the whole report reads healthy while the ledger is
+    wrong -- exactly the outcome this module exists to prevent.
+    """
+    for as_of, amount in (
+        ("2025-02-28", "1000.00"),
+        ("2025-04-08", "3189.05"),
+        ("2025-04-30", "3270.40"),
+    ):
+        stated_balance.record(
+            checking_ledger, account_alias="nfcu-checking",
+            as_of=as_of, amount=amount,
+        )
+    # March only: the same synthetic merchant also posts in April, and the
+    # April interval must stay clean so the localisation below means something.
+    checking_ledger.execute(
+        "DELETE FROM transactions WHERE description = 'Quillfeather Books' "
+        "AND posted_date < DATE '2025-04-01'"
+    )
+
+    results = monthly_check.check_account(
+        checking_ledger, account_alias="nfcu-checking")
+    broken = [row for row in results if row.status == monthly_check.MISMATCH]
+
+    assert [row.anchor_as_of for row in broken] == [date(2025, 2, 28)]
+    assert broken[0].stated_as_of == date(2025, 4, 8)
+    assert broken[0].delta == Decimal("18.99")   # the missing debit, un-subtracted
+    # The interval that does not contain the dropped row still reconciles, so
+    # the break is localised rather than smeared over everything after it.
+    assert by_month(
+        [row for row in results if row.stated_as_of == date(2025, 4, 30)]
+    )["2025-04"].status == monthly_check.OK
+
+
+def test_two_stated_figures_in_one_month_produce_two_rows(checking_ledger):
+    """The interval is the unit of the check; the month only groups the report."""
+    for as_of, amount in (
+        ("2025-03-31", "1855.03"),
+        ("2025-04-08", "3189.05"),
+        ("2025-04-30", "3270.40"),
+    ):
+        stated_balance.record(
+            checking_ledger, account_alias="nfcu-checking",
+            as_of=as_of, amount=amount,
+        )
+    results = monthly_check.check_account(
+        checking_ledger, account_alias="nfcu-checking")
+
+    april = [row for row in results if row.month == "2025-04"]
+    assert [row.stated_as_of for row in april] == [date(2025, 4, 8), date(2025, 4, 30)]
+    assert all(row.status == monthly_check.OK for row in april)
+
+
+def test_a_month_holding_no_figure_at_all_still_reports_not_stated(checking_ledger):
+    """Reconciling every pair must not absorb an unchecked month into silence."""
+    for as_of, amount in (
+        ("2025-02-28", "1000.00"),
+        ("2025-04-08", "3189.05"),
+        ("2025-04-30", "3270.40"),
+    ):
+        stated_balance.record(
+            checking_ledger, account_alias="nfcu-checking",
+            as_of=as_of, amount=amount,
+        )
+    results = monthly_check.check_account(
+        checking_ledger, account_alias="nfcu-checking")
+
+    march = [row for row in results if row.month == "2025-03"]
+    assert [row.status for row in march] == [monthly_check.NOT_STATED]
+    assert not march[0].checked
+    # ...and the rows stay in interval order across the whole report.
+    assert [row.month for row in results] == [
+        "2025-02", "2025-03", "2025-04", "2025-04"
+    ]
+
+
+def test_the_cli_shows_every_interval_it_reconciled(configured, capsys):
+    """An unchecked interval must not be invisible in the output either.
+
+    Two figures inside March, so the report has to print two rows for one
+    month and say which window each of them reconciled.
+    """
+    cli.main(["ingest", "--account", "nfcu-checking"])
+    for as_of, amount in (
+        ("2025-02-28", "1000.00"),
+        ("2025-03-14", "3354.50"),   # 1000.00 + March movement posted through 03-14
+        ("2025-03-31", "1855.03"),
+    ):
+        cli.main(["record-balance", "--account", "nfcu-checking",
+                  "--as-of", as_of, "--amount", amount])
+    capsys.readouterr()
+
+    assert cli.main(["monthly-check", "--account", "nfcu-checking"]) == 0
+    out = capsys.readouterr().out
+    assert "2025-02-28 -> 2025-03-14" in out
+    assert "2025-03-14 -> 2025-03-31" in out
+    assert out.count("nfcu-checking 2025-03  OK") == 2
+
+
+# --- what a zero delta actually proves ---------------------------------------
+
+def test_a_zero_delta_proves_the_net_reconciles_not_that_every_row_landed(checking_ledger):
+    """The claim this check is allowed to make, pinned by its own counterexample.
+
+    The check compares two sums, and offsetting errors cancel inside a sum. A
+    dropped row and an equal-value duplicate net to zero, so the delta is zero
+    and the interval reconciles -- while the ledger holds neither the right
+    rows nor the right count of them. Transaction-level completeness would need
+    a mechanism that compares rows rather than totals; there is deliberately
+    none here, and the docstrings must not claim otherwise.
+    """
+    stated_balance.record(
+        checking_ledger, account_alias="nfcu-checking", as_of="2025-03-31",
+        amount="1855.03",
+    )
+    stated_balance.record(
+        checking_ledger, account_alias="nfcu-checking", as_of="2025-04-30",
+        amount="3270.40",
+    )
+    before = checking_ledger.execute(
+        "SELECT COUNT(*) FROM transactions WHERE posted_date >= DATE '2025-04-01'"
+    ).fetchone()[0]
+
+    # One April debit dropped, and a different April debit of the same value
+    # duplicated. Net movement is unchanged; the rows are wrong either way.
+    dropped, duplicated = checking_ledger.execute(
+        "SELECT description, amount FROM transactions "
+        "WHERE posted_date >= DATE '2025-04-01' AND amount < 0 "
+        "GROUP BY description, amount HAVING COUNT(*) = 1 "
+        "ORDER BY description LIMIT 2"
+    ).fetchall()[:2]
+    assert dropped[1] != duplicated[1]        # different values, so scale one
+    checking_ledger.execute(
+        "DELETE FROM transactions WHERE description = ?", [dropped[0]]
+    )
+    checking_ledger.execute(
+        "UPDATE transactions SET amount = amount + ? WHERE description = ?",
+        [dropped[1], duplicated[0]],
+    )
+
+    april = [row for row in monthly_check.check_account(
+        checking_ledger, account_alias="nfcu-checking") if row.checked][-1]
+    assert april.delta == Decimal("0.00")
+    assert april.status == monthly_check.OK    # the net reconciles...
+    after = checking_ledger.execute(
+        "SELECT COUNT(*) FROM transactions WHERE posted_date >= DATE '2025-04-01'"
+    ).fetchone()[0]
+    assert after != before                     # ...and the rows are still wrong.
+
+
+def test_no_docstring_claims_transaction_level_completeness():
+    """The overclaim is a correctness defect in its own right: it is believed.
+
+    'Every transaction imported exactly once' is what a reader will act on when
+    a delta is zero -- stopping the search for the offsetting pair that a net
+    check cannot see. Pin the wording so the stronger claim cannot come back.
+    """
+    prose = "\n".join(
+        (REPO_ROOT / "src" / "purser" / rel).read_text(encoding="utf-8")
+        for rel in ("core/monthly_check.py", "cli.py")
+    )
+    assert "imported exactly once, with the right sign" not in prose
+    assert "net" in monthly_check.__doc__
+    assert "not** proof that every transaction was imported exactly once" in (
+        monthly_check.__doc__
+    )
