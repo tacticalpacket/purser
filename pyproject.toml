@@ -22,7 +22,7 @@ purser = "purser.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-purser = ["db/*.sql", "db/migrations/*.sql"]
+purser = ["db/*.sql", "db/migrations/*.sql", "dashboard/*.html", "dashboard/*.css", "dashboard/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

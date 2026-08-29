@@ -584,7 +584,7 @@
         row.appendChild(el("div", "ranked-name", m.group));
         row.appendChild(el("div", "ranked-amount", moneyAbs(m.amount)));
         var track = el("div", "ranked-track");
-        var fill = el("div", "ranked-fill");
+        var fill = el("div", "ranked-fill is-spend");
         fill.style.width = (max > 0 ? (Math.abs(m.amount) / max) * 100 : 0).toFixed(2) + "%";
         track.appendChild(fill);
         row.appendChild(track);

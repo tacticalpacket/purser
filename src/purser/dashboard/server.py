@@ -37,6 +37,7 @@ keeps the page out of the browser's disk cache.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -54,6 +55,26 @@ _ASSETS = Path(__file__).resolve().parent
 
 def _asset(name: str) -> str:
     return (_ASSETS / name).read_text(encoding="utf-8")
+
+
+def inline_safely(text: str, element: str) -> str:
+    """Make `text` safe to place inside `<element>...</element>` in HTML.
+
+    An HTML parser ends a `<script>` or `<style>` element at the first
+    `</script` or `</style` in its raw text, wherever that lands -- inside a
+    string literal, inside a comment, anywhere. Nothing in the JavaScript or CSS
+    grammar protects it, so a source comment that merely *mentions* the closing
+    tag truncates the element and the browser parses the rest of the file as
+    markup.
+
+    That is not hypothetical here: app.js's own header comment explains the
+    `</script>` breakout it defends against, and writing that sentence broke the
+    page. The escape is the standard one -- a backslash before the slash, which
+    the HTML tokenizer no longer recognises as a closing tag while JavaScript
+    and CSS read it as the same characters they always did (`"<\\/script>"` is
+    `"</script>"`, and in a comment it is inert either way).
+    """
+    return re.sub(rf"</\s*({element})", r"<\\/\1", text, flags=re.IGNORECASE)
 
 
 def escape_document(document: dict) -> str:
@@ -81,8 +102,8 @@ def render_page(document: dict, nonce: str | None = None) -> str:
     # after it. (It cannot contain one anyway once escaped, but ordering the
     # replacements this way means that does not have to be true.)
     html = html.replace("{{NONCE}}", nonce)
-    html = html.replace("{{STYLE}}", _asset("style.css"))
-    html = html.replace("{{SCRIPT}}", _asset("app.js"))
+    html = html.replace("{{STYLE}}", inline_safely(_asset("style.css"), "style"))
+    html = html.replace("{{SCRIPT}}", inline_safely(_asset("app.js"), "script"))
     html = html.replace("{{DOCUMENT_JSON}}", escape_document(document))
     return html
 
@@ -157,7 +178,18 @@ def build_server(document: dict, port: int = 0) -> ThreadingHTTPServer:
     return ThreadingHTTPServer((LOOPBACK, port), handler)
 
 
-def serve(document: dict, port: int = 0, announce=print) -> int:
+def _announce(line: str) -> None:
+    """Print a startup line and flush it.
+
+    `serve_forever` blocks for the life of the process, so a buffered stdout --
+    which is what a redirected or piped run gets -- would hold the URL until the
+    server was stopped. Printing an address nobody can read until they give up
+    waiting for it is the same as not printing it.
+    """
+    print(line, flush=True)
+
+
+def serve(document: dict, port: int = 0, announce=_announce) -> int:
     """Serve the page until interrupted. Returns a process exit code."""
     try:
         httpd = build_server(document, port)
