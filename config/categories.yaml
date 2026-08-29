@@ -1,0 +1,110 @@
+# Category hierarchy for purser, taken from docs/AUDIT-PLAN.md.
+#
+# Source in the audit plan:
+#   - The flat list of categories is Phase 1 Step 2, "Ledger build": "housing, utilities,
+#     insurance, loans/debt, groceries, dining, delivery/takeout, coffee/convenience, fuel,
+#     auto, medical, subscriptions/SaaS, memberships/gym, shopping, home/tools, travel,
+#     transfers, income, unknown." The plan calls this "a starting taxonomy" the captain
+#     will adjust — this file is that taxonomy encoded, not expanded.
+#   - The grouping (fixed / recurring discretionary / variable) is Phase 1 Step 1, view 2
+#     ("Cash flow by month"): "outflow broken into fixed (rent, insurance, loans,
+#     utilities), recurring discretionary (subscriptions, memberships), and variable
+#     (food, fuel, shopping, dining, everything else)."
+#
+# GAP (see PR body for the full note): the audit plan explicitly assigns only 6 of the 19
+# categories to a group (housing/insurance/loans_debt/utilities -> fixed;
+# subscriptions_saas/memberships_gym -> recurring_discretionary). For the remaining
+# variable-side categories (groceries, dining, delivery_takeout, coffee_convenience, fuel,
+# auto, medical, shopping, home_tools, travel) the plan only gives examples plus
+# "everything else" as a catch-all. They are placed under `variable` here as that
+# catch-all, not because the plan named each one individually — flag before treating that
+# placement as settled.
+#
+# A rule (config/rules/categories.yaml) names a category by its `id`. Ids are unique
+# across the WHOLE file, not just within a group, so a rule never has to say which group
+# it means.
+
+groups:
+  fixed:
+    label: Fixed
+    description: >
+      Rent, insurance, loans, utilities. Audit plan's fixed-outflow group (AUDIT-PLAN.md
+      Phase 1, view 2) — recurs every period and doesn't move with behavior.
+    categories:
+      - id: housing
+        label: Housing
+      - id: utilities
+        label: Utilities
+      - id: insurance
+        label: Insurance
+      - id: loans_debt
+        label: Loans/Debt
+
+  recurring_discretionary:
+    label: Recurring discretionary
+    description: >
+      Subscriptions, memberships. Audit plan's recurring-discretionary group — recurs on
+      a schedule but is a choice, not an obligation, and is the direct target of Phase 1's
+      recurring-charges view and kill list.
+    categories:
+      - id: subscriptions_saas
+        label: Subscriptions/SaaS
+      - id: memberships_gym
+        label: Memberships/Gym
+
+  variable:
+    label: Variable
+    description: >
+      "Food, fuel, shopping, dining, and everything else" per the audit plan's
+      variable-outflow group. See the GAP note above the door: most of these categories
+      were placed here as that catch-all, not individually named by the plan.
+    categories:
+      - id: groceries
+        label: Groceries
+      - id: dining
+        label: Dining
+      - id: delivery_takeout
+        label: Delivery/Takeout
+      - id: coffee_convenience
+        label: Coffee/Convenience
+      - id: fuel
+        label: Fuel
+      - id: auto
+        label: Auto
+      - id: medical
+        label: Medical
+      - id: shopping
+        label: Shopping
+      - id: home_tools
+        label: Home/Tools
+      - id: travel
+        label: Travel
+
+  income:
+    label: Income
+    description: >
+      Money in. Outside the fixed/recurring/variable outflow split, which only covers
+      outflow (AUDIT-PLAN.md Phase 1, view 2).
+    categories:
+      - id: income
+        label: Income
+
+  transfers:
+    label: Transfers
+    description: >
+      Movement between the captain's own accounts (e.g. NFCU to Schwab, card payments
+      from checking). Excluded from spend views so money moving between pockets is never
+      counted as spending (AUDIT-PLAN.md Phase 1 Step 2, "Ledger build").
+    categories:
+      - id: transfers
+        label: Transfers
+
+  unknown:
+    label: Unknown
+    description: >
+      Merchant not identifiable yet. AUDIT-PLAN.md's own verdict list: "UNKNOWN: merchant
+      not identifiable, look it up." Every transaction should leave this category before
+      an audit is called done (Phase 1: "Nothing uncategorized when done").
+    categories:
+      - id: unknown
+        label: Unknown

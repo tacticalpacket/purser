@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Committed pre-commit hook. Git does not clone hooks (.git/hooks/ is never versioned),
+# so this only runs after a one-time, per-clone opt-in:
+#
+#   git config core.hooksPath githooks
+#
+# See scripts/no-real-data-guard.sh for what this actually checks, and AGENTS.md for the
+# protection model and its residual gap. A fresh clone that has not run the config line
+# above is NOT protected — this hook simply never executes for it.
+
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+exec "$repo_root/scripts/no-real-data-guard.sh"

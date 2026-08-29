@@ -1,0 +1,34 @@
+# Merchant normalization aliases for purser.
+#
+# docs/DESIGN.md: this is where "confirmed mappings live." Generic normalization
+# (strip store numbers, dates, trailing IDs, "POS"/"ACH" prefixes, city codes —
+# docs/AUDIT-PLAN.md Phase 1 Step 2) runs first and handles most descriptors on its own.
+# This file holds the exceptions it can't: a payment-processor string, a DBA, a
+# truncated or garbled descriptor that a human has actually confirmed maps to a real
+# merchant name.
+#
+# Pipeline order: raw statement string -> generic normalization -> alias lookup (this
+# file) -> category rules (config/rules/categories.yaml). An alias key is matched
+# against generic normalization's OUTPUT, not the raw statement string.
+#
+# ---
+# How a human adds one
+#
+#   Add an entry under `aliases:`, keyed by the normalized-but-still-wrong string exactly
+#   as it comes out of generic normalization, with the confirmed display name as the
+#   value:
+#
+#     aliases:
+#       "SQ *SOME GARBLED STRING": "Some Real Merchant"
+#
+#   Confirm before adding. This file holds mappings the captain has verified against his
+#   own statement, not guesses — docs/AUDIT-PLAN.md's privacy note and docs/DESIGN.md's
+#   "unique merchant strings, not full transaction rows" rule both assume every entry
+#   here is a settled fact, not an inference a hosted model made unsupervised.
+#
+# ---
+# No real merchant strings are seeded here yet: none were available when this file was
+# created (see PR body — this task's inputs were the two design docs, not the real
+# statements). Add the first confirmed mapping the next time a raw descriptor needs one.
+
+aliases: {}

@@ -1,0 +1,53 @@
+# Payee/keyword -> category rules for purser's deterministic categorization pass.
+#
+# docs/DESIGN.md keeps "deterministic rules before AI" from the original spec verbatim:
+# this file runs first, over every normalized merchant; the LLM only ever sees whatever
+# is left uncategorized after these rules run, and a human correcting a category adds or
+# edits a rule HERE rather than patching one transaction — "corrections become rules."
+#
+# Rules match against the NORMALIZED merchant string, i.e. after config/rules/merchants.yaml
+# aliasing has already run. Categorization is a two-stage pipeline: normalize, then match.
+#
+# ---
+# How a human adds a rule
+#
+#   Append an entry under `rules:`:
+#
+#     - match: "ABC FITNESS"       # substring or exact string to look for
+#       match_type: substring       # substring (default) | exact
+#       category: memberships_gym   # an id from config/categories.yaml
+#       note: >                     # required: why this rule exists
+#         Cite the real evidence — an audit-plan line, a statement you confirmed, a
+#         correction you made and don't want to repeat. Not a guess.
+#
+#   `category` must be an id that exists in config/categories.yaml — the referential
+#   integrity check (scripts/check_category_refs.py) fails the check otherwise.
+#
+# ---
+# When two rules match
+#
+#   Rules are evaluated top to bottom. THE FIRST MATCH WINS. There is no separate
+#   priority field — the file's order IS the priority list. Practical effect:
+#     - Put specific rules (exact merchant names) above general ones (broad keywords),
+#       so a broad rule can't shadow a specific one just by sitting above it.
+#     - A correction that must override an existing rule goes ABOVE that rule, not at
+#       the end of the file.
+#     - The integrity check verifies every `category` exists; it does NOT detect one
+#       rule shadowing another. Keep entries specific and skim the file when adding one
+#       broad enough to worry about.
+
+rules:
+  - match: "ABC FITNESS"
+    match_type: substring
+    category: memberships_gym
+    note: >
+      Third-party gym billing processor — the merchant name on the statement may not be
+      the gym's own name. Named explicitly in docs/AUDIT-PLAN.md Phase 1, Step 3
+      ("Gyms often ... bill through a third party (ABC Fitness, Paramount Acceptance)").
+
+  - match: "PARAMOUNT ACCEPTANCE"
+    match_type: substring
+    category: memberships_gym
+    note: >
+      Same third-party-gym-biller case as ABC Fitness, same citation:
+      docs/AUDIT-PLAN.md Phase 1, Step 3.
