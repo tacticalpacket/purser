@@ -136,10 +136,10 @@ So:
   which stops another *user*; every process running as the captain reads it, including
   one started by his own shell in a checkout of a fork's branch. Isolation is what
   protects the corpus. Permissions are hygiene.
-- Public CI, when it exists, runs on **GitHub-hosted runners against synthetic fixtures
-  only**: never a self-hosted runner, never real data, never financial secrets.
+- Public CI runs on **GitHub-hosted runners against synthetic fixtures only**: never a
+  self-hosted runner, never real data, never financial secrets.
   `scripts/check_workflow_policy.py` enforces the shapes that would break this and is run
-  by the suite; it passes vacuously while there are no workflows.
+  by the suite, so `.github/workflows/ci.yml` is checked by the run it starts. See "CI".
 
 **Ordinary trusted development is unaffected.** A Firstmate crewmate or a local Claude
 Code session working on this repository is trusted code doing its job: branch, edit, run
@@ -248,16 +248,29 @@ The suite needs no private state and must never touch any: it runs entirely agai
 
 ## CI
 
-**While the repository is private**, no GitHub Actions workflow may have an automatic
-trigger (push/PR/schedule): private-repo Actions minutes bill against the captain's
-account and that budget is constrained. Manual-dispatch-only is the most that's allowed.
-Check the repository's visibility, not a date, before adding any workflow at all.
+The repository is public, so Actions minutes are free and automatic triggers are allowed.
+`.github/workflows/ci.yml` is the one workflow: `push` to `main` and `pull_request`, on
+GitHub-hosted runners, running the suite and `scripts/check_category_refs.py
+--no-private`. Its header comment explains each choice; read that before editing it.
 
-That restriction retires when **both** are true: the repository is public (public-repo
-Actions minutes are free), and the public-CI security gate has passed. It has not been
-built yet — do not assume public CI exists. When it is built, the rules in "Trusted and
-untrusted code" apply to it, and `scripts/check_workflow_policy.py` enforces the shapes
-that would break them.
+The earlier prohibition on automatic triggers was a **private-repo billing** rule, and it
+retired with the repository going public. Nothing in the security rules retired with it —
+a fork's pull request causes that file to run its author's code, so the rules in "Trusted
+and untrusted code" apply in full, and `scripts/check_workflow_policy.py` enforces the
+five shapes that would break them: self-hosted runners, `pull_request_target`, a
+`workflow_run` that consumes artifacts, unjustified top-level write permissions, and an
+action referenced by anything but a full commit SHA. It is a test module too, so a
+forbidden shape fails the suite rather than waiting for review. GitHub enforces the
+pinning independently (`sha_pinning_required` is set on the repository) — but only at run
+time, after the push.
+
+Public CI reads the **tracked** config layer only. `--no-private` is not a convenience
+there; the overlay is the captain's real merchant descriptors and does not exist on a
+runner. Adding a step that needs a secret, an artifact handed between workflows, or
+anything beyond `contents: read` means re-reading that section first.
+
+If a workflow ever needs to bill against a private repository again, the old rule comes
+back with it: check the repository's visibility, not a date.
 
 ## Maintaining this file
 

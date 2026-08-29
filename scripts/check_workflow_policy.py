@@ -5,8 +5,9 @@ purser's repository is public; the machine that develops it holds the captain's 
 financial corpus. Those two facts meet in `.github/workflows/`, because a workflow is
 the one tracked artefact that a stranger's pull request can cause to *run*.
 
-There are no workflows yet, and this slice deliberately adds none. This check exists so
-that the first one to arrive cannot arrive in one of the four shapes that would matter:
+`.github/workflows/ci.yml` is the one workflow, and it runs on every fork pull request.
+This check exists so that it -- and anything added beside it later -- cannot take one of
+the five shapes that would matter:
 
 1. **`runs-on: self-hosted`** -- a self-hosted runner is the captain's own machine, or
    one that can reach it. Fork pull-request code running there is code running next to
@@ -31,6 +32,19 @@ that the first one to arrive cannot arrive in one of the four shapes that would 
              contents: write
 
    A top-level grant above read is accepted only when every job carries such a comment.
+
+5. **An action referenced by tag or branch** -- `actions/checkout@v4` resolves to whatever
+   that tag points at when the job starts, and a tag is mutable by whoever owns it. A
+   compromised or retargeted tag runs its new contents in a job that has already checked
+   out this repository. Pin the full 40-character commit SHA, with the human-readable
+   version in a trailing comment:
+
+       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+   GitHub enforces this independently -- the repository has `sha_pinning_required` set --
+   but it enforces it at run time, on a push that has already happened. This says so
+   before the commit. A `./local-action` path needs no pin: it is this repository's own
+   code, already fixed by the commit under test.
 
 Run it directly, or via tests/test_workflow_policy.py which also proves it bites:
 
@@ -61,6 +75,12 @@ ARTIFACT_CONSUMERS = re.compile(
     r"downloadArtifact|/actions/artifacts",
     re.IGNORECASE,
 )
+
+#: A full commit SHA, which is the only immutable way to name an action's code.
+COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
+
+#: The container equivalent, for a `docker://` step.
+IMAGE_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 def _triggers(document: dict) -> set[str]:
@@ -116,6 +136,43 @@ def _is_self_hosted(runs_on) -> bool:
     else:
         return False
     return any("self-hosted" in label.lower() for label in labels)
+
+
+def _action_references(document: dict) -> list[tuple[str, str]]:
+    """(job name, `uses:` value) for every action and reusable workflow referenced.
+
+    Both spellings count: a step's `uses:`, and a job-level `uses:` calling a
+    reusable workflow. The second one runs a whole file someone else controls.
+    """
+    found: list[tuple[str, str]] = []
+    for name, job in (document.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        if isinstance(job.get("uses"), str):
+            found.append((str(name), job["uses"]))
+        for step in job.get("steps") or []:
+            if isinstance(step, dict) and isinstance(step.get("uses"), str):
+                found.append((str(name), step["uses"]))
+    return found
+
+
+def _is_pinned(uses: str) -> bool:
+    """Is this reference immutable?
+
+    A path beginning `./` is this repository's own code, already fixed by the
+    commit under test. A container is pinned by image digest, everything else by
+    the full 40-character commit SHA -- a short SHA is not enough, because it is
+    a prefix, and a prefix can be collided with deliberately.
+    """
+    reference = uses.strip()
+    if reference.startswith("./"):
+        return True
+    _, separator, revision = reference.partition("@")
+    if not separator:
+        return False
+    if reference.startswith("docker://"):
+        return bool(IMAGE_DIGEST.fullmatch(revision))
+    return bool(COMMIT_SHA.fullmatch(revision))
 
 
 def _jobs_without_justification(document: dict, text: str) -> list[str]:
@@ -194,6 +251,15 @@ def check_workflow(path: Path) -> list[str]:
                 f"every job including ones added later. Scope write to the job that needs "
                 f"it, or add a '# permissions-justification: <why>' comment in each job "
                 f"(missing on: {', '.join(sorted(unjustified))})."
+            )
+
+    for job, uses in _action_references(document):
+        if not _is_pinned(uses):
+            violations.append(
+                f"{path.name}: job {job!r} references {uses!r}, which is not pinned to a "
+                f"full commit SHA. A tag is mutable by whoever owns it, so a retargeted "
+                f"tag runs new code in a job that has already checked this repository "
+                f"out. Pin the 40-character SHA and name the version in a comment."
             )
 
     return violations
