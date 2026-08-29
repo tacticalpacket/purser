@@ -1,0 +1,8 @@
+﻿Posting Date,Transaction Date,Amount,Credit Debit Indicator,type,Type Group,Reference,Instructed Currency,Currency Exchange Rate,Instructed Amount,Description,Category,Check Serial Number,Card Ending,Rewards Total,Rewards Type
+04/01/2025,03/31/2025,1500.00,Credit,ACH,ACH,,,,,Payroll Deposit Vulcan,Income,,,,
+04/02/2025,04/01/2025,54.09,Debit,POS,POS,,,,,Saltmarsh Deli,Dining,,,,
+04/04/2025,04/03/2025,9.99,Debit,ACH,ACH,,,,,Larkspur Streaming,Subscriptions,,,,
+04/06/2025,04/05/2025,88.40,Debit,POS,POS,,,,,Thornfield Utilities,Utilities,,,,
+04/08/2025,04/07/2025,6.75,Debit,POS,POS,,,,,Marrowgate Transit,Transport,,,,
+04/08/2025,04/07/2025,6.75,Debit,POS,POS,,,,,Marrowgate Transit,Transport,,,,
+04/10/2025,04/09/2025,31.20,Debit,POS,POS,,,,,Quillfeather Books,Shopping,,,,
