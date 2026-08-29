@@ -1,5 +1,5 @@
 """purser command line: ingest | record-balance | monthly-check | balance-check
-| quality | sniff | paths.
+| quality | dashboard-data | sniff | paths.
 
 Everything runs against local files. Nothing here talks to a network.
 
@@ -12,10 +12,12 @@ so the answer cannot depend on which checkout the process was started in.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from purser import __version__
+from purser import analytics
 from purser.core import balance_check, monthly_check, paths, stated_balance
 from purser.core.accounts import find_account, load_registry, raw_dir
 from purser.core.config import MissingRegistry
@@ -216,6 +218,32 @@ def cmd_quality(args) -> int:
     return 0
 
 
+def cmd_dashboard_data(args) -> int:
+    """Print the dashboard document as JSON on stdout. Reads; never writes.
+
+    The ledger is opened READ-ONLY, so a reporting run cannot alter the data it
+    is reporting on. That also means this command does not create the database
+    or sync the account registry the way the writing subcommands do: if the
+    ledger is not there yet, that is a fact to report, not one to fix by
+    creating an empty one.
+
+    The document is local-only, like everything else here. It carries real
+    descriptions and real amounts; nothing sends it anywhere.
+    """
+    db = _db_path(args)
+    if not db.is_file():
+        print(f"purser: no ledger at {db}; run `purser ingest` first", file=sys.stderr)
+        return 2
+    con = analytics.open_read_only(db)
+    try:
+        document = analytics.build_document(con)
+    finally:
+        con.close()
+    json.dump(document, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
 def cmd_sniff(args) -> int:
     """Structural inspection of an export: columns, BOM, row count."""
     shape = nfcu_csv.sniff(args.file)
@@ -285,6 +313,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("quality", help="ledger aggregates and import history")
     p.set_defaults(func=cmd_quality)
+
+    p = sub.add_parser(
+        "dashboard-data",
+        help="print the dashboard JSON document to stdout",
+        description=(
+            "Reads the ledger read-only and prints one JSON document: coverage, "
+            "balances, cash flow, spending, merchants, card, recurrence and the "
+            "flow-classification counts that make the totals auditable. Card "
+            "payments and internal transfers are excluded from spending on both "
+            "legs; rows that cannot be placed are reported as ambiguous rather "
+            "than folded into a total."
+        ),
+    )
+    p.set_defaults(func=cmd_dashboard_data)
 
     p = sub.add_parser("sniff", help="structural inspection of one export file")
     p.add_argument("file")
