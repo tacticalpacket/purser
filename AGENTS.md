@@ -253,6 +253,20 @@ the obvious place:
   unsanitised institution text. There is no `innerHTML` in `app.js` and there must never
   be one.
 
+**Loopback is the default, not the only option, and the two halves are one
+rule.** `--host` publishes the page; a non-loopback host turns on HTTP Basic
+authentication and `build_server` raises `AuthenticationRequired` *before it
+binds* when no password is configured. The refusal lives at the bind rather
+than in the CLI so no caller and no flag order can reach the routable-and-
+unauthenticated combination -- there is no switch that disables auth and no
+invented default password. `is_loopback` fails closed, so `0.0.0.0` (every
+interface, not loopback) and any unresolved hostname both demand one. The
+password resolves through `paths.dashboard_password_path()` like every other
+piece of private state; it is a credential, so it never appears in a log, a
+unit file, a commit, or an error message. Basic auth over plain HTTP is
+readable on the wire -- say so, and do not "fix" it with TLS that nobody asked
+for.
+
 **Some real ledgers predate `balances.source_kind`**, because `CREATE TABLE IF NOT EXISTS`
 never alters an existing table and no migration has been applied. `analytics.load_accounts`
 selects that column only where `information_schema` shows it. Expect the same shape of
