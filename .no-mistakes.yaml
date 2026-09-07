@@ -1,0 +1,21 @@
+# no-mistakes gate config for purser.
+#
+# The gate is installed but not this repo's default delivery mode — it is selected
+# per task for consequential security, privacy, data-integrity or high-risk work.
+# Without a configured test command, its Test step falls back to asking an agent to
+# rediscover a test strategy from scratch on every gated run, at real model-time cost
+# and with no guarantee of running the same thing twice. Pin it to the repository's
+# own tests instead.
+#
+# The value below is the pytest step from .github/workflows/ci.yml — that workflow is
+# the authority this tracks; if the two drift, this file is wrong; keep them in step
+# rather than restating CI's reasoning here.
+#
+# Chained shell execution (`a && b`) for commands.test could not be established from
+# `no-mistakes --help`, `no-mistakes init --help`, `no-mistakes doctor`, or any shipped
+# example config, so only the pytest command is recorded here rather than a guessed
+# chain. `python scripts/check_category_refs.py --no-private` is not run by this gate's
+# Test step as a result, but it remains covered by CI on every pull request regardless
+# — see .github/workflows/ci.yml.
+commands:
+  test: 'python -m pytest'
