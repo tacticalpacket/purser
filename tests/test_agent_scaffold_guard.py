@@ -248,7 +248,7 @@ def test_the_guard_fails_with_scaffolding_staged_and_passes_without_it(staging_r
 def test_scaffolding_under_the_fixtures_re_inclusion_is_covered_by_the_guard_alone(
     scratch_repo, staging_repo
 ):
-    """The one corner where layer two does not reach, pinned rather than papered over.
+    """The one corner where the ignore rules do not reach, pinned rather than papered over.
 
     `!/tests/fixtures/**` sits at the bottom of `.gitignore` and gitignore is
     last-match-wins, so it un-ignores `tests/fixtures/.claude/`. Moving the
