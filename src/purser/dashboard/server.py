@@ -1,15 +1,28 @@
-"""Serve the dashboard page on the loopback interface, and nothing else.
+"""Serve the dashboard page: loopback by default, authenticated when it is not.
 
-This page renders someone's entire financial position. Three properties below
-are security properties, not preferences, and each has a reason written next to
-it because the reason is what a future change has to argue with.
+This page renders someone's entire financial position. The properties below are
+security properties, not preferences, and each has a reason written next to it
+because the reason is what a future change has to argue with.
 
-**Loopback only.** The listener binds `LOOPBACK` -- the literal 127.0.0.1 --
-and there is no host argument anywhere in this module or in the CLI. Binding
-0.0.0.0 would publish the owner's balances to every machine on the network,
-including a cafe's, with no authentication of any kind in front of them. There
-is deliberately nothing to override: `tests/test_dashboard.py` asserts the bound
-address is loopback.
+**Loopback by default, and never routable without a password.** The listener
+binds `LOOPBACK` -- the literal 127.0.0.1 -- unless a host is asked for
+explicitly. Publishing this page is opt-in, because publishing it publishes the
+owner's balances to every machine on the network.
+
+Opting in does not opt out of authentication. `build_server` raises
+`AuthenticationRequired` when a non-loopback host is requested with no password
+configured, so the unsafe combination -- routable and unauthenticated -- cannot
+be reached by any flag, in any order, rather than merely being discouraged. The
+password comes from the private config home (`paths.dashboard_password_path`),
+the same mechanism the rest of purser resolves private state with, and
+`hmac.compare_digest` compares it so a wrong guess costs the same time whatever
+its prefix. Nothing here logs the password, the `Authorization` header, or the
+credentials decoded out of it: `log_message` is silenced and no code path
+prints them.
+
+Basic authentication over plain HTTP puts that password on the wire in
+reversible form. On a LAN whose owner chose it that is the accepted trade; it
+is not encryption and must never be described as such.
 
 **One route.** `GET /` returns the page. Everything else is 404 with an empty
 body. There is no static-file handler, no directory listing and no path
@@ -36,6 +49,10 @@ keeps the page out of the browser's disk cache.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hmac
+import ipaddress
 import json
 import re
 import secrets
@@ -44,8 +61,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-#: The only address this server ever binds. See the module docstring.
+from purser.core import paths
+
+#: The address this server binds unless one is asked for explicitly.
 LOOPBACK = "127.0.0.1"
+
+#: The only account name. There is no user management here and there is not
+#: going to be one; this is a single password on a single page.
+USERNAME = "purser"
+
+#: Sent with every 401 so a browser offers its own password prompt.
+REALM = "purser"
 
 #: The only path that returns a body.
 ROUTE = "/"
@@ -108,6 +134,77 @@ def render_page(document: dict, nonce: str | None = None) -> str:
     return html
 
 
+class AuthenticationRequired(RuntimeError):
+    """A routable bind was asked for with no password to put in front of it.
+
+    Raised instead of starting, because the alternative -- serving anyway, or
+    inventing a password -- publishes the whole ledger to the network. There is
+    no flag that turns this off.
+    """
+
+
+def is_loopback(host: str) -> bool:
+    """True only for an address that cannot be reached from another machine.
+
+    Fails closed. An address literal is decided by `ipaddress`, which knows the
+    whole 127.0.0.0/8 and ::1 story; the one name accepted is `localhost`.
+    Anything else -- a hostname that might resolve anywhere, an empty string,
+    `0.0.0.0`, `::` -- counts as routable and therefore demands a password.
+    `0.0.0.0` matters most: it is not loopback, it is *every* interface.
+    """
+    name = (host or "").strip().strip("[]")
+    if name.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
+
+
+def load_password() -> str | None:
+    """The configured dashboard password, or None when there is no file.
+
+    Read from the private config home like every other piece of private state
+    (`paths.dashboard_password_path`); this deliberately adds no second
+    configuration system. Surrounding whitespace is stripped, because a file
+    written by `echo` ends in a newline and nobody types one. A file that is
+    present but empty is the same as absent: there is no password, so a
+    routable bind must refuse.
+    """
+    path = paths.dashboard_password_path()
+    try:
+        secret = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return secret or None
+
+
+def _credentials_match(header: str | None, password: str) -> bool:
+    """Whether an `Authorization` header carries the one valid credential.
+
+    Every failure -- absent, wrong scheme, undecodable, no colon, wrong user,
+    wrong password -- returns False and says nothing about which. Both halves
+    are compared with `hmac.compare_digest`, and both are compared every time:
+    returning early on a bad username would leak, through timing, that the
+    username was the part that was wrong.
+    """
+    if not header:
+        return False
+    scheme, _, encoded = header.partition(" ")
+    if scheme.lower() != "basic":
+        return False
+    try:
+        decoded = base64.b64decode(encoded.strip(), validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        return False
+    user, sep, offered = decoded.partition(":")
+    if not sep:
+        return False
+    user_ok = hmac.compare_digest(user, USERNAME)
+    password_ok = hmac.compare_digest(offered, password)
+    return user_ok and password_ok
+
+
 def _csp(nonce: str) -> str:
     return "; ".join(
         [
@@ -128,11 +225,35 @@ class DashboardHandler(BaseHTTPRequestHandler):
     sys_version = ""
     protocol_version = "HTTP/1.1"
 
-    def __init__(self, *args, document: dict, **kwargs):
+    def __init__(self, *args, document: dict, password: str | None = None, **kwargs):
         self._document = document
+        self._password = password
         super().__init__(*args, **kwargs)
 
+    def _authorized(self) -> bool:
+        """Whether this request may be answered at all.
+
+        Checked before the route, so an unauthenticated client learns nothing
+        about which paths exist -- 404 and 200 are both 401 to a stranger.
+        `self.headers.get` is the only place the header is touched, and its
+        value is never stored, printed or logged.
+        """
+        if self._password is None:
+            return True
+        return _credentials_match(self.headers.get("Authorization"), self._password)
+
+    def _send_unauthorized(self) -> None:
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", f'Basic realm="{REALM}"')
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802 -- BaseHTTPRequestHandler's spelling
+        if not self._authorized():
+            self._send_unauthorized()
+            return
+
         if urlsplit(self.path).path != ROUTE:
             self.send_response(404)
             self.send_header("Content-Length", "0")
@@ -154,6 +275,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_HEAD(self) -> None:  # noqa: N802
+        if not self._authorized():
+            self._send_unauthorized()
+            return
         self.send_response(200 if urlsplit(self.path).path == ROUTE else 404)
         self.send_header("Content-Length", "0")
         self.send_header("Cache-Control", "no-store")
@@ -168,14 +292,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
         """
 
 
-def build_server(document: dict, port: int = 0) -> ThreadingHTTPServer:
-    """A server bound to loopback, ready to `serve_forever`.
+def build_server(
+    document: dict,
+    port: int = 0,
+    host: str = LOOPBACK,
+    password: str | None = None,
+) -> ThreadingHTTPServer:
+    """A bound server, ready to `serve_forever`.
 
     Separate from `serve` so a test can bind, assert the address, and close
     without ever entering the accept loop.
+
+    The refusal happens here rather than in the CLI, before the socket exists,
+    so it holds for every caller: a routable `host` with no `password` raises
+    `AuthenticationRequired` and nothing is ever listening. A password given
+    for a loopback bind is honoured too -- authentication is enforced whenever
+    there is a password, and merely *required* when the host is routable.
     """
-    handler = partial(DashboardHandler, document=document)
-    return ThreadingHTTPServer((LOOPBACK, port), handler)
+    if not is_loopback(host) and not password:
+        raise AuthenticationRequired(
+            f"refusing to serve on {host}: that address is reachable from other "
+            f"machines and this page shows a complete financial position. Write "
+            f"a password to {paths.dashboard_password_path()} (mode 600) and try "
+            f"again. There is no way to serve a routable address without one."
+        )
+    handler = partial(DashboardHandler, document=document, password=password)
+    return ThreadingHTTPServer((host, port), handler)
 
 
 def _announce(line: str) -> None:
@@ -189,19 +331,31 @@ def _announce(line: str) -> None:
     print(line, flush=True)
 
 
-def serve(document: dict, port: int = 0, announce=_announce) -> int:
+def serve(
+    document: dict,
+    port: int = 0,
+    host: str = LOOPBACK,
+    password: str | None = None,
+    announce=_announce,
+) -> int:
     """Serve the page until interrupted. Returns a process exit code."""
     try:
-        httpd = build_server(document, port)
+        httpd = build_server(document, port, host=host, password=password)
     except OSError as exc:
         if port == 0:
             raise
         announce(f"port {port} is not available ({exc.strerror}); picking a free one")
-        httpd = build_server(document, 0)
+        httpd = build_server(document, 0, host=host, password=password)
 
-    host, bound = httpd.server_address[0], httpd.server_address[1]
-    announce(f"http://{host}:{bound}{ROUTE}")
-    announce("loopback only; this page is not reachable from any other machine")
+    bound_host, bound = httpd.server_address[0], httpd.server_address[1]
+    announce(f"http://{bound_host}:{bound}{ROUTE}")
+    if is_loopback(bound_host):
+        announce("loopback only; this page is not reachable from any other machine")
+    else:
+        # Says what is true and no more. Basic auth over HTTP is not encrypted,
+        # and the password itself never appears on this or any other line.
+        announce("reachable from this network; HTTP Basic authentication is required")
+        announce("the password is sent in reversible form -- this is not encrypted")
     announce("press Ctrl-C to stop")
     try:
         httpd.serve_forever()

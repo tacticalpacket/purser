@@ -166,6 +166,18 @@ def private_rules_dir() -> Path:
     return config_home() / "rules"
 
 
+def dashboard_password_path() -> Path:
+    """The dashboard's HTTP Basic password, when the dashboard is served on a LAN.
+
+    A credential is private state, so it resolves the same way every other
+    piece of private state does -- through the config home, beside the real
+    `accounts.yaml` -- rather than through a second mechanism. There is no
+    default and no generated fallback: `purser dashboard --host` on a routable
+    address refuses to start when this file is absent, which is the point.
+    """
+    return config_home() / "dashboard-password"
+
+
 def ensure_private_dir(path: Path) -> Path:
     """Create a directory and its parents, owner-only, and return it.
 
@@ -210,6 +222,7 @@ __all__ = [
     "InsecureDataHome",
     "backups_dir",
     "config_home",
+    "dashboard_password_path",
     "data_home",
     "database_path",
     "describe",
