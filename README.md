@@ -112,11 +112,16 @@ something the tests do for you.
 The guards are standalone commands too:
 
 ```sh
-scripts/no-real-data-guard.sh          # what a commit is about to record
-scripts/check_fixture_provenance.py    # every fixture is fabricated
-scripts/check_workflow_policy.py       # no workflow can reach the private corpus
-scripts/check_category_refs.py         # rule -> taxonomy references, both config layers
+scripts/no-real-data-guard.sh              # what a commit is about to record
+scripts/check_fixture_provenance.py        # every fixture is fabricated
+.venv/bin/python scripts/check_workflow_policy.py    # no workflow can reach the private corpus
+.venv/bin/python scripts/check_category_refs.py      # rule -> taxonomy references, both config layers
 ```
+
+The first two need no third-party module and run fine on the bare shebang's system
+interpreter. The last two import `yaml` and the `purser` package -- both installed
+into `.venv`, not the system interpreter -- so they need the same `.venv/bin/python`
+prefix as the pytest invocation above.
 
 See `tests/fixtures/README.md` and `AGENTS.md` for the data-handling rules this
 repo operates under.
