@@ -89,27 +89,46 @@ def scratch_repo(tmp_path) -> Path:
 # --------------------------------------------------------------------------
 
 
+def _ignored(repo: Path, path: str) -> bool:
+    """Whether git actually ignores `path` -- the plain call's exit status, never `-v`'s.
+
+    `check-ignore -v` exits 0 for ANY pattern that decided the path, a negation
+    included, so it answers "what matched", not "is it ignored". Reading a verdict
+    off it is how a re-inclusion comes back looking like an exclusion.
+    """
+    return _git("check-ignore", "--no-index", path, cwd=repo, check=False).returncode == 0
+
+
+def _deciding_pattern(repo: Path, path: str) -> tuple[str, str]:
+    """The `(source file, pattern)` git reports as deciding `path`."""
+    verbose = _git("check-ignore", "-v", "--no-index", path, cwd=repo, check=False)
+    source, _line, pattern = verbose.stdout.split("\t", 1)[0].split(":", 2)
+    return source, pattern
+
+
 @pytest.mark.parametrize("path", SCAFFOLDING)
 def test_the_tracked_gitignore_is_what_ignores_agent_scaffolding(scratch_repo, path):
-    result = _git("check-ignore", "-v", "--no-index", path, cwd=scratch_repo, check=False)
-
-    assert result.returncode == 0, (
+    assert _ignored(scratch_repo, path), (
         f"{path} is ignored by nothing that travels with this repository. A clone that "
         f"has not been hand-configured would offer it to `git add .`"
     )
-    source = result.stdout.split(":", 1)[0]
+
+    source, pattern = _deciding_pattern(scratch_repo, path)
+
     assert source == ".gitignore", (
         f"{path} is ignored by {source}, not by the tracked .gitignore. An exclusion "
         f"only one clone can see is not a repository rule"
+    )
+    assert not pattern.startswith("!"), (
+        f"{path} was decided by the re-inclusion {pattern}, which un-ignores it. A "
+        f"negation must never be what satisfies this test"
     )
 
 
 @pytest.mark.parametrize("path", ORDINARY)
 def test_the_ignore_rule_still_admits_ordinary_project_files(scratch_repo, path):
     """The control. A `.gitignore` that swallowed everything would pass the test above."""
-    result = _git("check-ignore", "--no-index", path, cwd=scratch_repo, check=False)
-
-    assert result.returncode == 1, (
+    assert not _ignored(scratch_repo, path), (
         f"{path} is ignored, and it is ordinary project code -- the ignore rules have "
         f"grown past agent scaffolding"
     )
@@ -201,6 +220,35 @@ def test_the_guard_fails_with_scaffolding_staged_and_passes_without_it(staging_r
         "the guard kept refusing after the scaffolding was unstaged, so it is not the "
         "staged scaffolding it was reacting to"
     )
+
+
+def test_scaffolding_under_the_fixtures_re_inclusion_is_covered_by_the_guard_alone(
+    scratch_repo, staging_repo
+):
+    """The one corner where layer two does not reach, pinned rather than papered over.
+
+    `!/tests/fixtures/**` sits at the bottom of `.gitignore` and gitignore is
+    last-match-wins, so it un-ignores `tests/fixtures/.claude/`. Moving the
+    `.claude/` rule below it is not available -- AGENTS.md pins those re-inclusions
+    last. The guard is what covers this path, which is the layering working as
+    designed, and this test is what will notice if either half changes.
+    """
+    path = "tests/fixtures/.claude/settings.json"
+
+    assert not _ignored(scratch_repo, path), (
+        f"{path} is now ignored by the tracked .gitignore. That is an improvement, but "
+        f"the re-inclusion block moved or narrowed to get there -- check AGENTS.md "
+        f"layer 2 and the guard's refusal message, which both describe the old state"
+    )
+
+    _stage(staging_repo, path)
+    result = _run_guard(staging_repo)
+
+    assert result.returncode == 1, (
+        f"{path} is ignored by nothing and refused by nothing, so `git add .` in a "
+        f"worker copy would stage it into a permanent public ref"
+    )
+    assert path in result.stderr
 
 
 # --------------------------------------------------------------------------

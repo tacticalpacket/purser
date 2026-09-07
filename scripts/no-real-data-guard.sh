@@ -31,8 +31,11 @@
 #      definitions and local machine paths, never project code. .gitignore's "Agent
 #      scaffolding" section is the repository-owned rule — the thing a machine-local
 #      .git/info/exclude line was not — and this check is what still refuses them when
-#      someone walks past it with `git add -f`. This repository is public and GitHub
-#      keeps pull-request head refs permanently, so there is no cleaning it up after.
+#      someone walks past it with `git add -f`. It is also the ONLY thing covering
+#      tests/fixtures/.claude/ and tests/fixtures/.codex/, which the trailing
+#      !/tests/fixtures/** re-inclusion un-ignores; this check is deliberately checked
+#      before the fixtures exemption below. This repository is public and GitHub keeps
+#      pull-request head refs permanently, so there is no cleaning it up after.
 #
 # This protects THIS repo on THIS machine, and only once enabled — see AGENTS.md for the
 # residual gap (a file copied elsewhere, or something that already made it into history,
@@ -77,7 +80,7 @@ while IFS= read -r file; do
             continue
             ;;
         .claude/*|.codex/*|*/.claude/*|*/.codex/*)
-            violations+=("$file :: agent scaffolding — .claude/ and .codex/ are an agent runtime's local tool state, not project code, and this repository is public with permanent pull-request refs. .gitignore excludes them; this file bypassed it")
+            violations+=("$file :: agent scaffolding — .claude/ and .codex/ are an agent runtime's local tool state, not project code, and this repository is public with permanent pull-request refs. Unstage it; nothing here needs to be committed")
             continue
             ;;
     esac

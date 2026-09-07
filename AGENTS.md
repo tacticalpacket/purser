@@ -62,7 +62,10 @@ Protection is four layers, and each covers what the ones before it cannot:
    re-inclusions must stay last. Agent scaffolding (`.claude/`, `.codex/`) is ignored
    here too, in the tracked file rather than in a machine-local `.git/info/exclude`:
    from inside the one clone that has such a line it is indistinguishable from a
-   repository rule, and it covers no other clone.
+   repository rule, and it covers no other clone. One exception, and it follows from
+   last-match-wins: `tests/fixtures/.claude/` and `tests/fixtures/.codex/` are *not*
+   ignored, because the trailing re-inclusion un-ignores them and it may not move. The
+   commit guard below is what covers that path, and a test pins it.
 3. **The commit guard.** `scripts/no-real-data-guard.sh`, installed as a pre-commit hook
    from `githooks/pre-commit`, inspects the staged set and refuses a commit touching
    `data/`/`reports/`, `config/accounts.yaml`, a statement-shaped file
