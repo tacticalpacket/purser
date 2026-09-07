@@ -60,7 +60,7 @@ jobs:
 
       # The suite is the coverage: migrations, schema, synthetic ingestion, idempotency,
       # overlapping-export dedupe, reconciliation, provenance and precedence, and the
-      # privacy invariants -- including the fixture-provenance and workflow-policy
+      # three privacy invariants -- including the fixture-provenance and workflow-policy
       # guards, which are test modules as well as standalone commands. Nothing here
       # re-states any of that in YAML.
       - name: Run the test suite
