@@ -1,0 +1,243 @@
+{
+  "_fixture_note": "SYNTHETIC. Invented institution, invented merchants, invented amounts. Matches purser dashboard data contract v1. Two merchant groups are deliberately hostile strings that test HTML/script escaping; they are not real names.",
+  "generated_at": "2025-08-21T14:32:07Z",
+  "coverage": {
+    "start": "2025-03-08",
+    "end": "2025-08-20",
+    "months": 6,
+    "transactions": 412,
+    "complete_months": ["2025-04", "2025-05", "2025-06", "2025-07"],
+    "partial_months": ["2025-03", "2025-08"]
+  },
+  "accounts": [
+    {
+      "alias": "harborline-checking",
+      "institution": "Harborline Credit Union",
+      "type": "checking",
+      "balance_sign": "asset",
+      "latest_balance": {
+        "amount": 4218.77,
+        "as_of": "2025-08-20",
+        "balance_type": "stated",
+        "provenance": "direct"
+      },
+      "available_balance": {
+        "amount": 4150.02,
+        "as_of": "2025-08-20",
+        "balance_type": "available",
+        "provenance": "direct"
+      }
+    },
+    {
+      "alias": "harborline-card",
+      "institution": "Harborline Credit Union",
+      "type": "credit_card",
+      "balance_sign": "liability",
+      "latest_balance": {
+        "amount": -1364.09,
+        "as_of": "2025-08-20",
+        "balance_type": "stated",
+        "provenance": "direct"
+      },
+      "available_balance": null
+    }
+  ],
+  "snapshot": {
+    "tracked_position": {
+      "amount": 2854.68,
+      "provenance": "derived",
+      "as_of": "2025-08-20",
+      "note": "The two tracked accounts only. Not net worth: no savings, certificates, retirement, property or debts outside these two are in scope."
+    },
+    "checking": {
+      "amount": 4218.77,
+      "provenance": "direct",
+      "as_of": "2025-08-20",
+      "note": "Institution figure at import time."
+    },
+    "card": {
+      "amount": -1364.09,
+      "provenance": "direct",
+      "as_of": "2025-08-20",
+      "note": "Liability. Stored negative; shown as the amount owed."
+    },
+    "recent": {
+      "window_months": 3,
+      "income": 15750.00,
+      "spending": 13869.76,
+      "net": 1880.24,
+      "provenance": "derived"
+    }
+  },
+  "cash_flow": [
+    {"month": "2025-03", "income": 3120.00, "spending": 2402.15, "net": 717.85, "account_movement": 1180.42, "provenance": "derived"},
+    {"month": "2025-04", "income": 6240.00, "spending": 4877.31, "net": 1362.69, "account_movement": 902.14, "provenance": "derived"},
+    {"month": "2025-05", "income": 6240.00, "spending": 5310.88, "net": 929.12, "account_movement": -145.60, "provenance": "derived"},
+    {"month": "2025-06", "income": 6390.00, "spending": 5008.44, "net": 1381.56, "account_movement": 1244.03, "provenance": "derived"},
+    {"month": "2025-07", "income": 6240.00, "spending": 6120.77, "net": 119.23, "account_movement": -388.91, "provenance": "derived"},
+    {"month": "2025-08", "income": 3120.00, "spending": 2740.55, "net": 379.45, "account_movement": 411.06, "provenance": "derived"}
+  ],
+  "income_detail": [
+    {"month": "2025-03", "amount": 3120.00, "label": "Payroll - Vessel & Vane Ltd", "provenance": "direct"},
+    {"month": "2025-04", "amount": 6240.00, "label": "Payroll - Vessel & Vane Ltd", "provenance": "direct"},
+    {"month": "2025-05", "amount": 6240.00, "label": "Payroll - Vessel & Vane Ltd", "provenance": "direct"},
+    {"month": "2025-06", "amount": 6240.00, "label": "Payroll - Vessel & Vane Ltd", "provenance": "direct"},
+    {"month": "2025-06", "amount": 150.00, "label": "External deposit - Cinderhale Refund", "provenance": "direct"},
+    {"month": "2025-07", "amount": 6240.00, "label": "Payroll - Vessel & Vane Ltd", "provenance": "direct"},
+    {"month": "2025-08", "amount": 3120.00, "label": "Payroll - Vessel & Vane Ltd", "provenance": "direct"}
+  ],
+  "spend_by_category": [
+    {"category": "Other", "n": 61, "amount": 10300.33, "share": 0.389, "provenance": "institution"},
+    {"category": "Groceries", "n": 96, "amount": 3980.22, "share": 0.150, "provenance": "institution"},
+    {"category": "Restaurants", "n": 71, "amount": 2810.44, "share": 0.106, "provenance": "institution"},
+    {"category": "Merchandise", "n": 55, "amount": 2402.66, "share": 0.091, "provenance": "institution"},
+    {"category": "Gas & Automotive", "n": 38, "amount": 1902.10, "share": 0.072, "provenance": "institution"},
+    {"category": "Utilities", "n": 18, "amount": 1544.00, "share": 0.058, "provenance": "institution"},
+    {"category": "Insurance", "n": 12, "amount": 1350.00, "share": 0.051, "provenance": "institution"},
+    {"category": "Medical", "n": 9, "amount": 1180.00, "share": 0.045, "provenance": "institution"},
+    {"category": "Travel", "n": 7, "amount": 990.35, "share": 0.037, "provenance": "institution"}
+  ],
+  "category_trend": [
+    {"category": "Restaurants", "months": {"2025-04": 402.11, "2025-05": 511.90, "2025-06": 588.20, "2025-07": 704.33}, "direction": "rising", "delta_pct": 75.2},
+    {"category": "Groceries", "months": {"2025-04": 690.40, "2025-05": 712.08, "2025-06": 664.31, "2025-07": 701.55}, "direction": "flat", "delta_pct": 1.6},
+    {"category": "Gas & Automotive", "months": {"2025-04": 402.00, "2025-05": 355.10, "2025-06": 318.44, "2025-07": 288.90}, "direction": "falling", "delta_pct": -28.1},
+    {"category": "Utilities", "months": {"2025-04": 244.00, "2025-05": 301.55, "2025-06": 348.10, "2025-07": 312.05}, "direction": "rising", "delta_pct": 27.9}
+  ],
+  "top_merchants": [
+    {"group": "Emberlyn Grocery", "n": 44, "amount": 3218.55, "first": "2025-03-11", "last": "2025-08-18",
+     "accounts": ["harborline-checking", "harborline-card"], "provenance": "inferred",
+     "raw_examples": ["EMBERLYN GROCERY #221", "EMBERLYN GRO 221 CARDPUR", "EMBERLYN GROCERY 0221 DEBIT"]},
+    {"group": "Ampersand & Sons Hardware", "n": 12, "amount": 884.20, "first": "2025-03-19", "last": "2025-08-04",
+     "accounts": ["harborline-card"], "provenance": "inferred",
+     "raw_examples": ["AMPERSAND & SONS HDW", "AMPERSAND &amp; SONS #4", "AMPERSAND & SONS <HDW>"]},
+    {"group": "</script><script>alert('xss')</script> Diner", "n": 9, "amount": 402.18, "first": "2025-04-02", "last": "2025-08-09",
+     "accounts": ["harborline-card"], "provenance": "inferred",
+     "raw_examples": ["</script><script>alert('xss')</script> DINER 8", "<img src=x onerror=alert(2)> DINER"]},
+    {"group": "Thornfield Utilities", "n": 6, "amount": 792.00, "first": "2025-03-15", "last": "2025-08-15",
+     "accounts": ["harborline-checking"], "provenance": "inferred",
+     "raw_examples": ["THORNFIELD UTIL AUTOPAY", "THORNFIELD UTILITIES ACH"]},
+    {"group": "Ironvale Hardware", "n": 8, "amount": 640.15, "first": "2025-03-22", "last": "2025-07-30",
+     "accounts": ["harborline-card"], "provenance": "inferred",
+     "raw_examples": ["IRONVALE HARDWARE 12", "IRONVALE HDW STORE 12"]},
+    {"group": "Saltmarsh Deli", "n": 22, "amount": 418.66, "first": "2025-03-09", "last": "2025-08-19",
+     "accounts": ["harborline-card"], "provenance": "inferred",
+     "raw_examples": ["SALTMARSH DELI", "SALTMARSH DELI #3"]},
+    {"group": "Marrowgate Transit", "n": 31, "amount": 310.00, "first": "2025-03-10", "last": "2025-08-20",
+     "accounts": ["harborline-checking"], "provenance": "inferred",
+     "raw_examples": ["MARROWGATE TRANSIT", "MARROWGATE TRAN FARE"]},
+    {"group": "Larkspur Streaming", "n": 6, "amount": 89.94, "first": "2025-03-14", "last": "2025-08-14",
+     "accounts": ["harborline-card"], "provenance": "inferred",
+     "raw_examples": ["LARKSPUR STREAMING MONTHLY"]}
+  ],
+  "largest_transactions": [
+    {"date": "2025-07-11", "account": "harborline-checking", "amount": -1850.00, "description": "QUILLFEATHER PROPERTY MGMT RENT", "category": "Other"},
+    {"date": "2025-06-02", "account": "harborline-checking", "amount": -1180.00, "description": "MARLOE MEDICAL GROUP PMT", "category": "Medical"},
+    {"date": "2025-05-19", "account": "harborline-card", "amount": -640.15, "description": "IRONVALE HARDWARE 12", "category": "Merchandise"},
+    {"date": "2025-08-04", "account": "harborline-card", "amount": -402.18, "description": "</script><script>alert('xss')</script> DINER 8", "category": "Restaurants"},
+    {"date": "2025-04-27", "account": "harborline-card", "amount": -318.90, "description": "AMPERSAND & SONS HDW", "category": "Merchandise"},
+    {"date": "2025-06-14", "account": "harborline-checking", "amount": 150.00, "description": "CINDERHALE REFUND ACH", "category": "Other"}
+  ],
+  "card": {
+    "balance": -1364.09,
+    "monthly_spend": [
+      {"month": "2025-03", "amount": 812.44},
+      {"month": "2025-04", "amount": 1402.10},
+      {"month": "2025-05", "amount": 1688.35},
+      {"month": "2025-06", "amount": 1455.02},
+      {"month": "2025-07", "amount": 1901.77},
+      {"month": "2025-08", "amount": 940.18}
+    ],
+    "top_merchants": [
+      {"group": "Emberlyn Grocery", "n": 21, "amount": 1408.22, "provenance": "inferred"},
+      {"group": "Ampersand & Sons Hardware", "n": 12, "amount": 884.20, "provenance": "inferred"},
+      {"group": "Ironvale Hardware", "n": 8, "amount": 640.15, "provenance": "inferred"},
+      {"group": "</script><script>alert('xss')</script> Diner", "n": 9, "amount": 402.18, "provenance": "inferred"},
+      {"group": "Saltmarsh Deli", "n": 22, "amount": 418.66, "provenance": "inferred"}
+    ],
+    "top_categories": [
+      {"category": "Groceries", "n": 51, "amount": 2210.44, "provenance": "institution"},
+      {"category": "Merchandise", "n": 33, "amount": 1802.30, "provenance": "institution"},
+      {"category": "Restaurants", "n": 44, "amount": 1611.08, "provenance": "institution"},
+      {"category": "Gas & Automotive", "n": 14, "amount": 702.55, "provenance": "institution"}
+    ],
+    "interest": [
+      {"month": "2025-04", "amount": 8.11},
+      {"month": "2025-05", "amount": 9.40},
+      {"month": "2025-06", "amount": 7.02},
+      {"month": "2025-07", "amount": 11.30},
+      {"month": "2025-08", "amount": 6.00}
+    ],
+    "interest_total": 41.83,
+    "unavailable": ["APR", "credit limit", "utilisation", "minimum payment", "due date", "statement close date"]
+  },
+  "recurring": [
+    {"group": "Larkspur Streaming", "cadence": "monthly", "median_amount": 14.99, "occurrences": 6,
+     "distinct_months": 6, "first": "2025-03-14", "last": "2025-08-14", "still_active": true,
+     "confidence": "high", "evidence": "6 charges in 6 distinct months; amounts 14.99 every time (IQR 0% of median).",
+     "provenance": "inferred"},
+    {"group": "Thornfield Utilities", "cadence": "monthly", "median_amount": 132.00, "occurrences": 6,
+     "distinct_months": 6, "first": "2025-03-15", "last": "2025-08-15", "still_active": true,
+     "confidence": "medium", "evidence": "6 charges in 6 distinct months, but the amount swings 104.10-168.40 (IQR 24% of median), as a metered bill does.",
+     "provenance": "inferred"},
+    {"group": "Harbourgate Mutual Insurance", "cadence": "monthly", "median_amount": 225.00, "occurrences": 6,
+     "distinct_months": 6, "first": "2025-03-05", "last": "2025-08-05", "still_active": true,
+     "confidence": "high", "evidence": "6 charges in 6 distinct months; amount 225.00 every time (IQR 0% of median).",
+     "provenance": "inferred"},
+    {"group": "Ampersand & Sons Hardware", "cadence": "irregular", "median_amount": 68.40, "occurrences": 12,
+     "distinct_months": 5, "first": "2025-03-19", "last": "2025-08-04", "still_active": true,
+     "confidence": "low", "evidence": "12 charges but only 5 distinct months and no stable amount (IQR 61% of median). This is a shop visited often, not a subscription.",
+     "provenance": "inferred"},
+    {"group": "Cormorant Club Annual", "cadence": "annual", "median_amount": 99.00, "occurrences": 1,
+     "distinct_months": 1, "first": "2025-04-06", "last": "2025-04-06", "still_active": false,
+     "confidence": "low", "evidence": "Seen once. One occurrence cannot establish a cadence; 'annual' is the description's own claim, not ours.",
+     "provenance": "inferred"}
+  ],
+  "leaks": [
+    {"title": "Card interest paid over the covered period",
+     "classification": "FACT",
+     "detail": "The card charged interest in 5 of the 6 covered months. This is money paid for carrying a balance, not for anything bought.",
+     "monthly_impact": 8.37,
+     "evidence": "Sum of card interest rows: 41.83 over 5 months."},
+    {"title": "Restaurant spending is rising while grocery spending is flat",
+     "classification": "INFERENCE",
+     "detail": "Restaurants rose 75% across the four complete months while groceries held flat. A rising share of food spend is moving out of the kitchen. This is a reading of four months of institution categories, not a verdict.",
+     "monthly_impact": 302.22,
+     "evidence": "Restaurants 402.11 -> 704.33 across 2025-04..2025-07; Groceries flat at ~690."},
+    {"title": "Two active subscriptions total 347.99 per month",
+     "classification": "POSSIBLE_OPPORTUNITY",
+     "detail": "Larkspur Streaming and Harbourgate Mutual Insurance are high-confidence recurring charges still active at the end of coverage. Whether either is wanted is not something the imports can tell you.",
+     "monthly_impact": 239.99,
+     "evidence": "Both have 6 occurrences across 6 distinct months with a stable amount."},
+    {"title": "Ambiguous flows were not folded into spending",
+     "classification": "FACT",
+     "detail": "8 rows could not be placed with confidence, most of them self-named ACH movements. They are excluded from both spending and income rather than guessed at, so both figures are understated by an unknown share of this amount.",
+     "monthly_impact": null,
+     "evidence": "reconciliation.ambiguous = 8, totalling -1240.55."}
+  ],
+  "data_quality": {
+    "notes": [
+      "Coverage starts 2025-03-08 and ends 2025-08-20, so 2025-03 and 2025-08 are partial months and must not drive a trend claim.",
+      "Categories on spending rows are the institution's own strings, used as given. They are not purser's judgement and are not consistent between the two accounts.",
+      "Merchant groups are inferred by normalising raw descriptions. A group is a guess; the raw examples under each are what was actually imported.",
+      "The card's ledger balance is the institution's figure at import time, not a live balance."
+    ],
+    "unavailable": [
+      "APR",
+      "credit limit",
+      "utilisation",
+      "minimum payment",
+      "due date",
+      "statement close date",
+      "any account outside the two tracked here (savings, certificates, retirement, property, other debts)"
+    ],
+    "reconciliation": {
+      "rows_total": 412,
+      "card_payment": 6,
+      "internal": 14,
+      "income": 11,
+      "spending": 373,
+      "ambiguous": 8,
+      "ambiguous_total_amount": -1240.55
+    }
+  }
+}

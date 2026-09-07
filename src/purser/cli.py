@@ -1,5 +1,5 @@
 """purser command line: ingest | record-balance | monthly-check | balance-check
-| quality | dashboard-data | sniff | paths.
+| quality | dashboard-data | dashboard | sniff | paths.
 
 Everything runs against local files. Nothing here talks to a network.
 
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from purser import __version__
-from purser import analytics
+from purser import analytics, dashboard
 from purser.core import balance_check, monthly_check, paths, stated_balance
 from purser.core.accounts import find_account, load_registry, raw_dir
 from purser.core.config import MissingRegistry
@@ -244,6 +244,41 @@ def cmd_dashboard_data(args) -> int:
     return 0
 
 
+def cmd_dashboard(args) -> int:
+    """Build the dashboard document and serve the page that renders it.
+
+    Reads the ledger read-only through the same `analytics.build_document` that
+    `dashboard-data` prints, then hands the result to
+    `purser.dashboard.server`. Nothing is written and nothing leaves the
+    machine: the listener binds loopback only, there is no host argument, and
+    the page has no remote subresources at all. `purser.dashboard.server`'s
+    module docstring is where those rules are written down.
+
+    `--document` renders a prepared JSON document instead of building one from
+    the ledger. That is how the page is developed against the synthetic fixture
+    in `tests/fixtures/dashboard_sample.json`, and it is the only way to look
+    at the page without opening real state.
+    """
+    if args.document is not None:
+        path = Path(args.document)
+        if not path.is_file():
+            print(f"purser: no such document: {path}", file=sys.stderr)
+            return 2
+        document = json.loads(path.read_text(encoding="utf-8"))
+        print(f"rendering {path}")
+    else:
+        db = _db_path(args)
+        if not db.is_file():
+            print(f"purser: no ledger at {db}; run `purser ingest` first", file=sys.stderr)
+            return 2
+        con = analytics.open_read_only(db)
+        try:
+            document = analytics.build_document(con)
+        finally:
+            con.close()
+    return dashboard.serve(document, port=args.port)
+
+
 def cmd_sniff(args) -> int:
     """Structural inspection of an export: columns, BOM, row count."""
     shape = nfcu_csv.sniff(args.file)
@@ -327,6 +362,28 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.set_defaults(func=cmd_dashboard_data)
+
+    p = sub.add_parser(
+        "dashboard",
+        help="serve the local dashboard page on 127.0.0.1",
+        description=(
+            "Builds the same document `dashboard-data` prints and serves one "
+            "self-contained HTML page that renders it. The listener binds "
+            "127.0.0.1 only -- there is no host option, because this page shows "
+            "your whole financial position and has no authentication in front "
+            "of it. The page has no remote subresources: CSS, JavaScript and "
+            "every chart are inlined, so it renders with the network cable "
+            "pulled. Press Ctrl-C to stop."
+        ),
+    )
+    p.add_argument("--port", type=int, default=8787,
+                   help="loopback port; 0 picks a free one. Default 8787, and "
+                        "if it is taken a free one is picked anyway")
+    p.add_argument("--document", metavar="PATH",
+                   help="render a prepared JSON document instead of reading the "
+                        "ledger; used to develop the page against the synthetic "
+                        "fixture")
+    p.set_defaults(func=cmd_dashboard)
 
     p = sub.add_parser("sniff", help="structural inspection of one export file")
     p.add_argument("file")

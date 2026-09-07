@@ -232,6 +232,33 @@ Documented in full in `src/purser/ingest/nfcu_csv.py`; the short version:
 - AI never does arithmetic (`docs/DESIGN.md`): SQL/Python (`queries/`, `src/purser/core/`)
   compute; a model describes or labels, it does not calculate totals, medians, or verdicts.
 
+## Dashboard
+
+`src/purser/dashboard/` renders the document `src/purser/analytics.py` builds; the shape
+between them is an external contract, so neither side changes a key alone. `purser
+dashboard` serves it, `--document PATH` renders a prepared one (that is how the page is
+worked on against `tests/fixtures/dashboard_sample.json`, without opening real state).
+
+`src/purser/dashboard/server.py`'s module docstring is authoritative for the three rules
+that matter -- loopback-only bind, one route, and the escaping of untrusted institution
+text -- and says why each is not a preference. Two sharp edges live there rather than in
+the obvious place:
+
+- **An HTML parser ends a `<script>` or `<style>` at the first closing-tag sequence in its
+  raw text**, inside a string or a comment alike; neither grammar protects it. `app.js`'s
+  own comment about the `</script>` breakout truncated the inlined renderer, and the page
+  still returned 200 with every header correct and rendered nothing. `inline_safely`
+  escapes both assets on the way in; `tests/test_dashboard.py` pins it.
+- **Nothing reaches the DOM except through `textContent`.** A merchant description is
+  unsanitised institution text. There is no `innerHTML` in `app.js` and there must never
+  be one.
+
+**Some real ledgers predate `balances.source_kind`**, because `CREATE TABLE IF NOT EXISTS`
+never alters an existing table and no migration has been applied. `analytics.load_accounts`
+selects that column only where `information_schema` shows it. Expect the same shape of
+drift from any other column added to `schema.sql` after a ledger was created: a read-only
+reporting path must degrade, not demand a migration.
+
 ## Conventions
 
 - Money is `DECIMAL(18,2)` everywhere, never `DOUBLE`.

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>purser</title>
+<style nonce="{{NONCE}}">
+{{STYLE}}
+</style>
+</head>
+<body>
+
+<!--
+  The document is served inside a NON-EXECUTABLE data block, never inside a
+  live <script>. Merchant descriptions come from an institution and are not
+  sanitised: one containing "</script>" would otherwise close this element and
+  everything after it would be parsed as markup. `<`, `>` and `&` are escaped
+  to their JSON \uXXXX forms on the server, so no byte in here can end the
+  element, and app.js reads it with textContent + JSON.parse.
+-->
+<script type="application/json" id="purser-document" nonce="{{NONCE}}">{{DOCUMENT_JSON}}</script>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">$</span>
+      <span>
+        <strong>purser</strong>
+        <span class="brand-sub">tracked-account view</span>
+      </span>
+    </div>
+    <div class="topbar-meta">
+      <span id="coverage-line" class="coverage-line"></span>
+      <span id="generated-line" class="generated-line"></span>
+    </div>
+  </div>
+  <nav class="sectionnav" aria-label="Sections">
+    <div class="wrap sectionnav-inner">
+      <a href="#snapshot">Snapshot</a>
+      <a href="#cashflow">Cash flow</a>
+      <a href="#spend">Where the money goes</a>
+      <a href="#card">Credit card</a>
+      <a href="#recurring">Recurring</a>
+      <a href="#leaks">Leaks &amp; opportunities</a>
+      <a href="#quality">Data quality</a>
+    </div>
+  </nav>
+</header>
+
+<main class="wrap" id="main">
+
+  <p id="load-error" class="load-error" hidden></p>
+
+  <section id="snapshot" class="section">
+    <h2 class="section-title">Snapshot</h2>
+    <p class="section-lede">Balances are the institution's own figures at import time. Nothing here is live.</p>
+    <div id="sign-convention" class="convention"></div>
+    <div id="snapshot-cards" class="cardgrid"></div>
+    <div id="snapshot-recent" class="panel"></div>
+    <div id="account-table" class="panel"></div>
+  </section>
+
+  <section id="cashflow" class="section">
+    <h2 class="section-title">Cash flow</h2>
+    <p class="section-lede">
+      Three separate metrics, never blended. <strong>Income</strong> is money entering from
+      outside the tracked accounts. <strong>Spending</strong> counts each real purchase once,
+      excluding card payments and internal transfers. <strong>Account movement</strong> is the
+      raw per-account sum and includes transfers &mdash; it is not spending.
+    </p>
+    <div id="cashflow-chart" class="panel chartpanel"></div>
+    <div id="cashflow-table" class="panel"></div>
+    <div id="income-detail" class="panel"></div>
+  </section>
+
+  <section id="spend" class="section">
+    <h2 class="section-title">Where the money goes</h2>
+    <div class="twocol">
+      <div id="category-panel" class="panel"></div>
+      <div id="merchant-panel" class="panel"></div>
+    </div>
+    <div id="category-trend" class="panel"></div>
+    <div id="largest-transactions" class="panel"></div>
+  </section>
+
+  <section id="card" class="section">
+    <h2 class="section-title">Credit card</h2>
+    <div id="card-panels"></div>
+  </section>
+
+  <section id="recurring" class="section">
+    <h2 class="section-title">Recurring charges</h2>
+    <p class="section-lede">
+      Recurrence is a heuristic, not a fact from the institution. Three or more charges across
+      three or more distinct months is the floor for <em>medium</em>; a stable amount on top of
+      that is what makes it <em>high</em>. Two occurrences is not a subscription.
+    </p>
+    <div id="recurring-panel" class="panel"></div>
+  </section>
+
+  <section id="leaks" class="section">
+    <h2 class="section-title">Leaks &amp; opportunities</h2>
+    <p class="section-lede">
+      Each item is labelled with what kind of claim it is. A <strong>FACT</strong> is arithmetic
+      on imported rows. An <strong>INFERENCE</strong> is a reading of them. A
+      <strong>POSSIBLE OPPORTUNITY</strong> is a question for you, not a recommendation.
+    </p>
+    <div id="leaks-panel"></div>
+  </section>
+
+  <section id="quality" class="section">
+    <h2 class="section-title">Data quality</h2>
+    <p class="section-lede">
+      What these numbers rest on, and what the imports cannot establish. Read this before
+      trusting anything above it.
+    </p>
+    <div id="reconciliation-panel" class="panel"></div>
+    <div class="twocol">
+      <div id="quality-notes" class="panel"></div>
+      <div id="quality-unavailable" class="panel"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap footer">
+  <p>
+    Served from your own machine on the loopback interface. No part of this page reaches the
+    network: no fonts, no chart library, no analytics, nothing remote. Every figure comes from
+    the document embedded above, which came from your local ledger.
+  </p>
+</footer>
+
+<script nonce="{{NONCE}}">
+{{SCRIPT}}
+</script>
+</body>
+</html>
