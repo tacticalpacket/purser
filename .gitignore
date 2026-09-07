@@ -72,6 +72,20 @@ Thumbs.db
 *.swp
 *.swo
 
+# --- Agent scaffolding ---
+# Agent runtimes write their own state into whatever working copy they run in:
+# .claude/ and .codex/ hold tool configuration, hook definitions and local machine
+# paths. None of it describes this project. This repository is public and GitHub
+# keeps pull-request head refs permanently, so one absent-minded `git add .` is not
+# something a later rewrite can undo.
+#
+# The rule belongs HERE, in the tracked file every clone gets. A machine-local
+# .git/info/exclude line covers exactly one clone while looking, from inside that
+# clone, indistinguishable from a repository rule -- which is how a sibling project
+# came to ship both directories to a production host.
+.claude/
+.codex/
+
 # --- Explicit re-inclusions ---
 # gitignore is last-match-wins, so these MUST stay at the bottom.
 # Only sanitized fixture data may be re-included here.

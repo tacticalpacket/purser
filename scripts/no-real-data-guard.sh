@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Second-layer guard against committing real financial data or credentials.
+# Second-layer guard against committing real financial data, credentials, or agent
+# scaffolding.
 #
 # .gitignore is necessary but not sufficient: `git add -f` walks straight past it, and so
 # does a tool or editor that stages by absolute path. This script inspects the STAGED set
@@ -25,6 +26,16 @@
 #      checked separately by scripts/check_fixture_provenance.py, run by the test suite.
 #   3. Anything named like a credential — .env files, *.pem/*.key/*.pfx/*.p12, private-key
 #      filenames, or a filename containing "secret"/"credential"/"password".
+#   4. Anything under .claude/ or .codex/, at any depth. Agent runtimes create these
+#      inside whatever working copy they run in; they hold tool configuration, hook
+#      definitions and local machine paths, never project code. .gitignore's "Agent
+#      scaffolding" section is the repository-owned rule — the thing a machine-local
+#      .git/info/exclude line was not — and this check is what still refuses them when
+#      someone walks past it with `git add -f`. It is also the ONLY thing covering
+#      tests/fixtures/.claude/ and tests/fixtures/.codex/, which the trailing
+#      !/tests/fixtures/** re-inclusion un-ignores; this check is deliberately checked
+#      before the fixtures exemption below. This repository is public and GitHub keeps
+#      pull-request head refs permanently, so there is no cleaning it up after.
 #
 # This protects THIS repo on THIS machine, and only once enabled — see AGENTS.md for the
 # residual gap (a file copied elsewhere, or something that already made it into history,
@@ -66,6 +77,10 @@ while IFS= read -r file; do
             ;;
         config/accounts.yaml)
             violations+=("$file :: the real account registry belongs in the private config overlay, not in git. The tracked template is config/accounts.example.yaml")
+            continue
+            ;;
+        .claude/*|.codex/*|*/.claude/*|*/.codex/*)
+            violations+=("$file :: agent scaffolding — .claude/ and .codex/ are an agent runtime's local tool state, not project code, and this repository is public with permanent pull-request refs. Unstage it; nothing here needs to be committed")
             continue
             ;;
     esac
