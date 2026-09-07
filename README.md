@@ -24,6 +24,17 @@ python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 ```
 
+Git does not clone hooks, so a fresh clone's pre-commit guard is off until you turn it on,
+once:
+
+```sh
+git config core.hooksPath githooks
+```
+
+This installs the commit guard that refuses to record real financial material. See
+`AGENTS.md` for the full rules, including the `--no-verify` override and its stated
+residual gap.
+
 ## Set up your private home
 
 Nothing real lives in this repository. Point purser at a home and give it a
