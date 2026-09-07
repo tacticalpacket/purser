@@ -90,6 +90,17 @@ def _source_checkout() -> Path | None:
 
 
 def _reject_if_in_checkout(home: Path, origin: str) -> None:
+    """Refuse a home inside this checkout, naming the setting that put it there.
+
+    The remedy has to name `origin` rather than a fixed variable. The config
+    home is reached only through ``XDG_CONFIG_HOME``: ``$PURSER_HOME``
+    overrides the *data* home and nothing else, so telling someone whose
+    ``XDG_CONFIG_HOME`` is the offender to point ``$PURSER_HOME`` elsewhere
+    sends them to a setting that cannot change the answer, and the same error
+    returns unchanged. An error on the privacy boundary is the one place a
+    misdirected instruction costs most: it reads as the guard being broken
+    rather than as the home being wrong.
+    """
     checkout = _source_checkout()
     if checkout is None:
         return
@@ -98,7 +109,7 @@ def _reject_if_in_checkout(home: Path, origin: str) -> None:
             f"{origin} resolves to {home}, which is inside the purser checkout "
             f"at {checkout}. Private financial state must live outside every "
             f"git worktree -- a worktree is disposable and a copy of it is a "
-            f"copy of the ledger. Point {DATA_HOME_ENV} somewhere else."
+            f"copy of the ledger. Point {origin} somewhere else."
         )
 
 

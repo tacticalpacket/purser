@@ -151,6 +151,56 @@ def test_a_data_home_inside_this_checkout_is_refused(monkeypatch):
     assert "inside the purser checkout" in str(excinfo.value)
 
 
+def test_a_config_home_inside_this_checkout_is_refused(monkeypatch):
+    """The overlay is private state too: the rule is not the data home's alone."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(REPO_ROOT))
+    with pytest.raises(paths.InsecureDataHome) as excinfo:
+        paths.config_home()
+    assert "inside the purser checkout" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("env_var", "value", "resolve"),
+    [
+        (paths.DATA_HOME_ENV, str(REPO_ROOT / "data"), lambda: paths.data_home()),
+        ("XDG_DATA_HOME", str(REPO_ROOT), lambda: paths.data_home()),
+        ("XDG_CONFIG_HOME", str(REPO_ROOT), lambda: paths.config_home()),
+    ],
+)
+def test_the_refusal_names_the_setting_that_actually_caused_it(
+    monkeypatch, env_var, value, resolve
+):
+    """The remedy must name the offending setting, not a fixed one.
+
+    Each home is reached through its own setting, so a message that always says
+    "point $PURSER_HOME somewhere else" is right by accident for the data home
+    and wrong for the config home.
+    """
+    for name in (paths.DATA_HOME_ENV, "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(env_var, value)
+
+    with pytest.raises(paths.InsecureDataHome) as excinfo:
+        resolve()
+    assert f"Point {env_var} somewhere else" in str(excinfo.value)
+
+
+def test_purser_home_cannot_clear_a_config_home_refusal(monkeypatch, tmp_path):
+    """The regression: $PURSER_HOME overrides the data home and nothing else.
+
+    Following an instruction to point it elsewhere leaves a config home inside
+    the checkout exactly as refused, which is why the message may not give it.
+    Setting the config home's own variable is what clears the error.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(REPO_ROOT))
+    monkeypatch.setenv(paths.DATA_HOME_ENV, str(tmp_path / "elsewhere"))
+    with pytest.raises(paths.InsecureDataHome):
+        paths.config_home()
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    assert paths.config_home() == tmp_path / "xdg-config" / paths.APP_DIR
+
+
 def test_a_relative_xdg_base_is_ignored_rather_than_resolved(monkeypatch, tmp_path):
     """The XDG spec says a relative base is invalid; resolving it would use cwd."""
     monkeypatch.chdir(REPO_ROOT)
