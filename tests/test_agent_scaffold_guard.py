@@ -25,7 +25,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -54,6 +54,24 @@ def _git(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProce
         cwd=cwd, capture_output=True, text=True, check=check,
         env={**os.environ, **GIT_ENV},
     )
+
+
+def _stage(repo: Path, path: str, body: str = "placeholder\n") -> None:
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body, encoding="utf-8")
+    _git("add", "-f", "--", path, cwd=repo)
+
+
+def _tracked_scaffolding(repo: Path) -> list[str]:
+    """Every tracked path holding a `.claude` or `.codex` path SEGMENT, at any depth.
+
+    Segment equality, not a pathspec: `git ls-files -- .claude` is a leading-path
+    match, so it reports root-level scaffolding and silently misses the same
+    directory one level down.
+    """
+    tracked = _git("ls-files", "-z", cwd=repo).stdout.split("\0")
+    return [p for p in tracked if p and {".claude", ".codex"} & set(PurePosixPath(p).parts)]
 
 
 @pytest.fixture
@@ -134,20 +152,32 @@ def test_the_ignore_rule_still_admits_ordinary_project_files(scratch_repo, path)
     )
 
 
-def test_no_agent_scaffolding_is_tracked_in_this_repository():
-    """Nothing has already slipped in -- with a positive control on the query itself.
+def test_no_agent_scaffolding_is_tracked_anywhere_in_this_repository(scratch_repo):
+    """Nothing has already slipped in -- with a control that can fail for that reason.
 
-    An empty result proves nothing on its own; it is exactly what a misspelled
-    pathspec returns. So the same query runs against a directory known to be
-    tracked, and has to come back non-empty.
+    An empty result proves nothing on its own; it is equally what a sweep looking in
+    the wrong place returns. So the same sweep runs first against a repository where
+    scaffolding IS tracked, at the root and nested under `tests/fixtures/`, and has to
+    find both. The nested path is the one that matters: it is the path this repository
+    documents as un-ignored by the trailing re-inclusion, so it is the likeliest to
+    actually land, and a root-anchored query would report the repository clean while
+    it sat there.
     """
-    tracked = _git("ls-files", "--", ".claude", ".codex", cwd=REPO_ROOT).stdout.split()
-    control = _git("ls-files", "--", "scripts", cwd=REPO_ROOT).stdout.split()
+    _stage(scratch_repo, ".claude/settings.local.json", "{}\n")
+    _stage(scratch_repo, "tests/fixtures/.claude/settings.json", "{}\n")
 
-    assert control, (
-        "the control query found no tracked files under scripts/, so this is a broken "
-        "query rather than a clean repository -- the assertion below proves nothing"
+    control = _tracked_scaffolding(scratch_repo)
+
+    assert control == [
+        ".claude/settings.local.json",
+        "tests/fixtures/.claude/settings.json",
+    ], (
+        f"the sweep found {control} in a repository tracking scaffolding at both "
+        f"depths, so it cannot see everything it claims to -- an empty result from it "
+        f"below would mean nothing"
     )
+
+    tracked = _tracked_scaffolding(REPO_ROOT)
     assert tracked == [], f"agent scaffolding is tracked here: {tracked}"
 
 
@@ -173,13 +203,6 @@ def staging_repo(tmp_path) -> Path:
     shutil.copyfile(GUARD, installed)
     installed.chmod(0o755)
     return repo
-
-
-def _stage(repo: Path, path: str, body: str = "placeholder\n") -> None:
-    target = repo / path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(body, encoding="utf-8")
-    _git("add", "-f", "--", path, cwd=repo)
 
 
 def _run_guard(repo: Path) -> subprocess.CompletedProcess:
