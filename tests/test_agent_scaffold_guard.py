@@ -103,7 +103,7 @@ def scratch_repo(tmp_path) -> Path:
 
 
 # --------------------------------------------------------------------------
-# Layer one: the tracked .gitignore, and only the tracked .gitignore
+# The ignore rule: the tracked .gitignore, and only the tracked .gitignore
 # --------------------------------------------------------------------------
 
 
@@ -182,7 +182,7 @@ def test_no_agent_scaffolding_is_tracked_anywhere_in_this_repository(scratch_rep
 
 
 # --------------------------------------------------------------------------
-# Layer two: the commit guard, for when .gitignore is walked past
+# The commit guard, for when .gitignore is walked past
 # --------------------------------------------------------------------------
 
 
