@@ -19,9 +19,9 @@ Goal: every dollar in and out over the window, sorted and accounted for, so the 
 1. Full ledger: every transaction, normalized merchant, category, account. Nothing uncategorized when done.
 2. Cash flow by month: income vs. outflow, and outflow broken into fixed (rent, insurance, loans, utilities), recurring discretionary (subscriptions, memberships), and variable (food, fuel, shopping, dining, everything else). This is the "where is it all going" view.
 3. Habit spend: merchants you hit frequently for small amounts. Weekly coffee, delivery apps, convenience stores, fuel, fast food. These do not look like subscriptions but behave like them. Ranked by monthly total and by visit count.
-4. Recurring charges: the subscription table described below, ranked by annualized cost, with keep / kill / verify verdicts.
+4. Recurring charges: the subscription table described below, ranked by annualized cost, with keep / kill / verify labels — suggestions for you to decide on, not verdicts.
 
-Anything that is a leak shows up in view 2 as a category that is too fat, in view 3 as a merchant that is too frequent, or in view 4 as a charge you forgot. All three get a verdict, not just the subscriptions.
+Anything that is a leak shows up in view 2 as a category that is too fat, in view 3 as a merchant that is too frequent, or in view 4 as a charge you forgot. All three get a labelled suggestion, not just the subscriptions — you make the call, not the model.
 
 ### Step 1. Export
 
@@ -53,7 +53,7 @@ Cash flow by month
 
 Habit spend
 - Group by normalized merchant; compute visit count, total, average ticket, visits per week.
-- Rank by monthly total. Anything with 4+ visits a month and a small ticket is a habit line, and gets the same keep / cut / reduce verdict as a subscription.
+- Rank by monthly total. Anything with 4+ visits a month and a small ticket is a habit line, and gets the same keep / cut / reduce label as a subscription — a labelled suggestion, not a verdict.
 
 Recurring charges
 - For each merchant compute median interval between charges, amount variance, first seen, last seen.
@@ -61,7 +61,9 @@ Recurring charges
 - Annualize: weekly x52, monthly x12, quarterly x4, annual x1.
 - Output sorted by annualized cost.
 
-Verdicts are judgment, so the script does the math and the LLM does the labeling. Every merchant and every category gets one:
+The decision is judgment, so the model never states it: the script does the math and the LLM
+produces a labelled suggestion for the captain to decide on. Every merchant and every category
+gets one of these labels, presented as a suggestion, never as a verdict:
 - KILL: recurring or habitual, no plausible current use, or duplicate of another service
 - CUT: real spend but the category or merchant is far above what the situation supports; set a cap
 - VERIFY: might be worth it, you decide

@@ -102,7 +102,7 @@ groups:
   unknown:
     label: Unknown
     description: >
-      Merchant not identifiable yet. AUDIT-PLAN.md's own verdict list: "UNKNOWN: merchant
+      Merchant not identifiable yet. AUDIT-PLAN.md's own suggestion labels: "UNKNOWN: merchant
       not identifiable, look it up." Every transaction should leave this category before
       an audit is called done (Phase 1: "Nothing uncategorized when done").
     categories:

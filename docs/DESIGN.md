@@ -28,7 +28,7 @@ Alternates if it does not land: `coffer`, `bursar`, `tally`.
 ## Milestones
 
 - M1 Ledger: ingest NFCU + Schwab CSVs, dedupe, normalize merchants, match transfers, categorize (rules first, LLM for leftovers, corrections become rules), balance check per account per month.
-- M2 Reports: the four audit views (cash flow by month, habit spend, recurring charges, verdicts) plus runway at current/trimmed/essential burn, emitted as CSVs and one static HTML report.
+- M2 Reports: the four audit views (cash flow by month, habit spend, recurring charges, labelled suggestions) plus runway at current/trimmed/essential burn, emitted as CSVs and one static HTML report.
 - M3 Ongoing: monthly ingest routine, price-change and new-recurring detection, data-quality page, optional simple dashboard, optional SimpleFIN feed.
 - M4 Investments and net worth over time, only if still wanted.
 
@@ -235,7 +235,9 @@ of that account from `raw/`, never a quiet switch on a live ledger.
 ## Division of labor across models
 
 - Claude Code (Opus): builds and maintains the repo, M1 through M3, in your RECON/ANALYSIS/DECISION/CHANGE session format.
-- Fable (chat): design decisions, spec arbitration, audit verdicts, this document.
+- Fable (chat): design decisions, spec arbitration, this document, and the audit's evidence
+  and labelled suggestions — the captain reads those and makes the call himself; the model
+  never states a verdict about his money.
 - GPT Codex as checker: review PRs/diffs for correctness of the accounting logic, especially dedupe, transfer matching, and sign conventions. Give it the fixtures and expected outputs, not your real data.
 - Real financial data goes to local tooling only unless you decide otherwise per session. LLM categorization passes should send unique merchant strings, not full transaction rows, when using hosted models.
 
