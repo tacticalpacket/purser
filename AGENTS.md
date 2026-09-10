@@ -230,7 +230,13 @@ Documented in full in `src/purser/ingest/nfcu_csv.py`; the short version:
   down and implemented in `src/purser/db/schema.sql`'s `category_source` block. A
   lower-authority pass must not silently overwrite a higher-authority assignment.
 - AI never does arithmetic (`docs/DESIGN.md`): SQL/Python (`queries/`, `src/purser/core/`)
-  compute; a model describes or labels, it does not calculate totals, medians, or verdicts.
+  compute; a model describes or labels, it does not calculate totals or medians.
+- **Model verdict policy (captain's ruling, 2026-09-09).** A model never states a verdict
+  about the captain's money — not within limits, not hedged, not with a confidence score
+  attached. What it may produce is evidence and suggestions, and the suggestions must be
+  **labelled** as suggestions, not presented as conclusions. The captain makes the call,
+  always. `docs/DESIGN.md`'s "Division of labor across models" and `docs/AUDIT-PLAN.md`
+  describe the audit output in these terms.
 
 ## Dashboard
 
